@@ -78,6 +78,7 @@
       }
     },
     "חסר קובץ tesseract" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -116,6 +117,9 @@
           }
         }
       }
+    },
+    "לא ניתן לקרוא את התמונה" : {
+
     },
     "מייצא... %lld%%" : {
       "localizations" : {

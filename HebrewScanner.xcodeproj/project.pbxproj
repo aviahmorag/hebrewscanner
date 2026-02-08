@@ -8,7 +8,6 @@
 
 /* Begin PBXBuildFile section */
 		21A46C9A2E36F924000183EB /* heb.traineddata in Resources */ = {isa = PBXBuildFile; fileRef = 21A46C962E36F924000183EB /* heb.traineddata */; };
-		21A46C9D2E36FFE7000183EB /* tesseract in Resources */ = {isa = PBXBuildFile; fileRef = 21A46C9C2E36FFE7000183EB /* tesseract */; };
 		21A46CAB2E57A000000183EB /* eng.traineddata in Resources */ = {isa = PBXBuildFile; fileRef = 21A46CAA2E57A000000183EB /* eng.traineddata */; };
 /* End PBXBuildFile section */
 
@@ -31,7 +30,6 @@
 
 /* Begin PBXFileReference section */
 		21A46C962E36F924000183EB /* heb.traineddata */ = {isa = PBXFileReference; lastKnownFileType = file; path = heb.traineddata; sourceTree = "<group>"; };
-		21A46C9C2E36FFE7000183EB /* tesseract */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.executable"; path = tesseract; sourceTree = "<group>"; };
 		21A46C9E2E37027E000183EB /* libarchive.13.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = libarchive.13.dylib; sourceTree = "<group>"; };
 		21A46C9F2E37027E000183EB /* libleptonica.6.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = libleptonica.6.dylib; sourceTree = "<group>"; };
 		21A46CA02E37027E000183EB /* libtesseract.5.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = libtesseract.5.dylib; sourceTree = "<group>"; };
@@ -97,7 +95,6 @@
 			isa = PBXGroup;
 			children = (
 				21A46C972E36F924000183EB /* tessdata */,
-				21A46C9C2E36FFE7000183EB /* tesseract */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -258,7 +255,6 @@
 			files = (
 				21A46CAB2E57A000000183EB /* eng.traineddata in Resources */,
 				21A46C9A2E36F924000183EB /* heb.traineddata in Resources */,
-				21A46C9D2E36FFE7000183EB /* tesseract in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -296,7 +292,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -e\n\n# Create directories\nmkdir -p \"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/Contents/Frameworks\"\nmkdir -p \"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/Contents/Resources/tessdata\"\n\n# Copy frameworks\ncp \"${SRCROOT}/Frameworks/\"*.dylib \"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/Contents/Frameworks/\"\n\n# Copy tesseract and tessdata\ncp \"${SRCROOT}/Resources/tesseract\" \"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/Contents/Resources/\"\ncp \"${SRCROOT}/Resources/tessdata/\"* \"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/Contents/Resources/tessdata/\"\n\n# Make tesseract executable\nchmod +x \"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/Contents/Resources/tesseract\"\n\n# Fix library paths BEFORE signing\nfor dylib in \"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/Contents/Frameworks/\"*.dylib; do\n    chmod +w \"$dylib\"\n    install_name_tool -id \"@rpath/$(basename \"$dylib\")\" \"$dylib\"\ndone\n\n# Fix tesseract binary paths\ninstall_name_tool -add_rpath \"@loader_path/../Frameworks\" \"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/Contents/Resources/tesseract\"\ninstall_name_tool -change \"/opt/homebrew/opt/leptonica/lib/libleptonica.6.dylib\" \"@rpath/libleptonica.6.dylib\" \"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/Contents/Frameworks/libtesseract.5.dylib\"\n\n# Sign everything AFTER modifying\nif [ -n \"${EXPANDED_CODE_SIGN_IDENTITY}\" ]; then\n    for dylib in \"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/Contents/Frameworks/\"*.dylib; do\n        codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" --timestamp --options runtime \"$dylib\"\n    done\n    codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" --timestamp --options runtime --entitlements \"${SRCROOT}/HebrewScanner/TesseractHelper.entitlements\" \"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/Contents/Resources/tesseract\"\nfi\n";
+			shellScript = "set -e\n\n# Create directories\nmkdir -p \"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/Contents/Frameworks\"\nmkdir -p \"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/Contents/Resources/tessdata\"\n\n# Copy frameworks\ncp \"${SRCROOT}/Frameworks/\"*.dylib \"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/Contents/Frameworks/\"\n\n# Copy tessdata\ncp \"${SRCROOT}/Resources/tessdata/\"* \"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/Contents/Resources/tessdata/\"\n\n# Strip stale Homebrew signatures so install_name_tool doesn't warn\nfor dylib in \"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/Contents/Frameworks/\"*.dylib; do\n    chmod +w \"$dylib\"\n    codesign --remove-signature \"$dylib\"\ndone\n\n# Fix library paths\nfor dylib in \"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/Contents/Frameworks/\"*.dylib; do\n    install_name_tool -id \"@rpath/$(basename \"$dylib\")\" \"$dylib\"\ndone\n\ninstall_name_tool -change \"/opt/homebrew/opt/leptonica/lib/libleptonica.6.dylib\" \"@rpath/libleptonica.6.dylib\" \"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/Contents/Frameworks/libtesseract.5.dylib\"\n\n# Sign frameworks\nif [ -n \"${EXPANDED_CODE_SIGN_IDENTITY}\" ]; then\n    for dylib in \"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/Contents/Frameworks/\"*.dylib; do\n        codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" --timestamp --options runtime \"$dylib\"\n    done\nfi\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -467,7 +463,9 @@
 		21F72F5F2E36F02400B409E5 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ARCHS = "$(ARCHS_STANDARD)";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				EXCLUDED_ARCHS = x86_64;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = HebrewScanner/HebrewScanner.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
@@ -489,17 +487,20 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-L$(SRCROOT)/Frameworks",
+					"-ltesseract.5",
+					"-lleptonica.6",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.aviah.HebrewScanner;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				REGISTER_APP_GROUPS = YES;
-				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = YES;
-				RUNTIME_EXCEPTION_ALLOW_UNSIGNED_EXECUTABLE_MEMORY = YES;
-				RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "HebrewScanner/HebrewScanner-Bridging-Header.h";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 			};
@@ -508,7 +509,9 @@
 		21F72F602E36F02400B409E5 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ARCHS = "$(ARCHS_STANDARD)";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				EXCLUDED_ARCHS = x86_64;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = HebrewScanner/HebrewScanner.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
@@ -530,17 +533,20 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-L$(SRCROOT)/Frameworks",
+					"-ltesseract.5",
+					"-lleptonica.6",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.aviah.HebrewScanner;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				REGISTER_APP_GROUPS = YES;
-				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = YES;
-				RUNTIME_EXCEPTION_ALLOW_UNSIGNED_EXECUTABLE_MEMORY = YES;
-				RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "HebrewScanner/HebrewScanner-Bridging-Header.h";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 			};

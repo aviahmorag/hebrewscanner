@@ -9,56 +9,67 @@ import Foundation
 
 @MainActor
 func runTesseractOCR(imageURL: URL) async throws -> (text: String, tsv: String) {
-    guard let tesseractURL = Bundle.main.resourceURL?.appendingPathComponent("tesseract") else {
-        throw NSError(domain: "OCR", code: 1, userInfo: [NSLocalizedDescriptionKey: String(localized: "חסר קובץ tesseract")])
-    }
-
     guard let tessdataURL = Bundle.main.resourceURL?.appendingPathComponent("tessdata") else {
         throw NSError(domain: "OCR", code: 2, userInfo: [NSLocalizedDescriptionKey: String(localized: "חסרת תיקיית tessdata")])
     }
 
-    let tempBase = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString)
-    let tempTSV = tempBase.appendingPathExtension("tsv")
+    let imagePath = imageURL.path
+    let tessdataPath = tessdataURL.path
 
-    print("📥 OCR input image: \(imageURL.path)")
-    print("📄 Expected output TSV: \(tempTSV.path)")
-    print("⚙️ Tesseract binary: \(tesseractURL.path)")
-    print("📚 tessdata folder: \(tessdataURL.path)")
+    print("📥 OCR input image: \(imagePath)")
+    print("📚 tessdata folder: \(tessdataPath)")
 
-    let process = Process()
-    process.executableURL = tesseractURL
-    process.arguments = [
-        imageURL.path,
-        "stdout",
-        "-l", "heb+eng",
-        "--tessdata-dir", tessdataURL.path,
-        "--psm", "6",
-        "-c", "tessedit_create_tsv=1"
-    ]
-    
-    print("🛠️ Running Tesseract with args: \(process.arguments!.joined(separator: " "))")
+    let tsvString: String = try await Task.detached {
+        // Create API handle
+        guard let api = TessBaseAPICreate() else {
+            throw NSError(domain: "OCR", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "Failed to create Tesseract API"
+            ])
+        }
+        defer { TessBaseAPIDelete(api) }
 
-    let errorPipe = Pipe()
-    let outputPipe = Pipe()
-    process.standardError = errorPipe
-    process.standardOutput = outputPipe
+        // Initialize with tessdata path and languages
+        let initResult = TessBaseAPIInit3(api, tessdataPath, "heb+eng")
+        guard initResult == 0 else {
+            throw NSError(domain: "OCR", code: 2, userInfo: [
+                NSLocalizedDescriptionKey: "Tesseract init failed (code \(initResult)). tessdata path: \(tessdataPath)"
+            ])
+        }
+        defer { TessBaseAPIEnd(api) }
 
-    try process.run()
-    process.waitUntilExit()
+        // Set page segmentation mode to single block
+        TessBaseAPISetPageSegMode(api, PSM_SINGLE_BLOCK)
 
-    let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-    let stderrOutput = String(data: errorData, encoding: .utf8) ?? ""
-    
-    let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
-    let tsvString = String(data: outputData, encoding: .utf8) ?? ""
+        // Load image via Leptonica
+        var pix: OpaquePointer? = pixRead(imagePath)
+        guard pix != nil else {
+            throw NSError(domain: "OCR", code: 3, userInfo: [
+                NSLocalizedDescriptionKey: String(localized: "לא ניתן לקרוא את התמונה")
+            ])
+        }
+        defer { pixDestroy(&pix) }
 
-    print("📤 stderr: \(stderrOutput.trimmingCharacters(in: .whitespacesAndNewlines))")
+        // Set image and recognize
+        TessBaseAPISetImage2(api, pix)
 
-    if process.terminationStatus != 0 {
-        throw NSError(domain: "OCR", code: Int(process.terminationStatus), userInfo: [
-            NSLocalizedDescriptionKey: "Tesseract failed with code \(process.terminationStatus): \(stderrOutput)"
-        ])
-    }
+        let recognizeResult = TessBaseAPIRecognize(api, nil)
+        guard recognizeResult == 0 else {
+            throw NSError(domain: "OCR", code: 4, userInfo: [
+                NSLocalizedDescriptionKey: "Tesseract recognition failed (code \(recognizeResult))"
+            ])
+        }
+
+        // Get TSV output
+        guard let tsvPtr = TessBaseAPIGetTsvText(api, 0) else {
+            throw NSError(domain: "OCR", code: 5, userInfo: [
+                NSLocalizedDescriptionKey: String(localized: "לא התקבל פלט TSV מ-Tesseract")
+            ])
+        }
+        defer { TessDeleteText(tsvPtr) }
+
+        let tsv = String(cString: tsvPtr)
+        return tsv
+    }.value
 
     if tsvString.isEmpty {
         print("❌ No TSV output received from Tesseract.")
