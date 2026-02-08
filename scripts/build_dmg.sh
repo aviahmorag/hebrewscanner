@@ -1,18 +1,18 @@
 #!/bin/bash
 #
-# build_dmg.sh - Create a distributable DMG for HebrewScanner
+# build_dmg.sh - Create a distributable DMG for Ayin
 #
 # Prerequisites:
 #   brew install create-dmg fileicon
 #
 # Usage:
-#   ./scripts/build_dmg.sh /path/to/HebrewScanner.app
+#   ./scripts/build_dmg.sh /path/to/Ayin.app
 #
 
 set -e
 
 if [ -z "$1" ]; then
-    echo "Usage: $0 /path/to/HebrewScanner.app"
+    echo "Usage: $0 /path/to/Ayin.app"
     exit 1
 fi
 
@@ -27,12 +27,12 @@ command -v fileicon >/dev/null 2>&1 || { echo "Install fileicon: brew install fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-DMG_PATH="${PROJECT_DIR}/HebrewScanner.dmg"
-TEMP_DMG="/tmp/HebrewScanner_rw.dmg"
-VOLUME_NAME="HebrewScanner"
+DMG_PATH="${PROJECT_DIR}/Ayin.dmg"
+TEMP_DMG="/tmp/Ayin_rw.dmg"
+VOLUME_NAME="Ayin"
 ICON_FILE="${APP_PATH}/Contents/Resources/AppIcon.icns"
-APPS_ICON="/tmp/hebrewscanner_apps_icon.png"
-BG_IMG="/tmp/hebrewscanner_dmg_bg.png"
+APPS_ICON="/tmp/ayin_apps_icon.png"
+BG_IMG="/tmp/ayin_dmg_bg.png"
 
 echo "Building DMG for: $APP_PATH"
 
@@ -45,7 +45,7 @@ icon.size = NSSize(width: 512, height: 512)
 let tiffData = icon.tiffRepresentation!
 let bitmap = NSBitmapImageRep(data: tiffData)!
 let pngData = bitmap.representation(using: .png, properties: [:])!
-try! pngData.write(to: URL(fileURLWithPath: "/tmp/hebrewscanner_apps_icon.png"))
+try! pngData.write(to: URL(fileURLWithPath: "/tmp/ayin_apps_icon.png"))
 SWIFT
 
 # Generate background image with arrow
@@ -75,7 +75,7 @@ text = "Drag to Applications"
 bbox = draw.textbbox((0, 0), text, font=font)
 draw.text(((W - (bbox[2] - bbox[0])) // 2, arrow_y + 25), text, fill=(140, 140, 140, 255), font=font)
 
-img.save("/tmp/hebrewscanner_dmg_bg.png")
+img.save("/tmp/ayin_dmg_bg.png")
 PYTHON
 
 # Clean up
@@ -112,7 +112,7 @@ SetFile -a C "$MOUNT_DIR"
 # Configure Finder window
 osascript <<'APPLESCRIPT'
 tell application "Finder"
-    tell disk "HebrewScanner"
+    tell disk "Ayin"
         open
         set current view of container window to icon view
         set toolbar visible of container window to false
@@ -122,7 +122,7 @@ tell application "Finder"
         set arrangement of theViewOptions to not arranged
         set icon size of theViewOptions to 128
         set background picture of theViewOptions to file ".background:bg.png"
-        set position of item "HebrewScanner.app" of container window to {150, 185}
+        set position of item "Ayin.app" of container window to {150, 185}
         set position of item "Applications" of container window to {450, 185}
         close
         open

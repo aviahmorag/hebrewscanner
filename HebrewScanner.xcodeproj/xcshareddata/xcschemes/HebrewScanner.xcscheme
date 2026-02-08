@@ -16,7 +16,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "21F72F3C2E36F02300B409E5"
-               BuildableName = "HebrewScanner.app"
+               BuildableName = "Ayin.app"
                BlueprintName = "HebrewScanner"
                ReferencedContainer = "container:HebrewScanner.xcodeproj">
             </BuildableReference>
@@ -69,7 +69,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "21F72F3C2E36F02300B409E5"
-            BuildableName = "HebrewScanner.app"
+            BuildableName = "Ayin.app"
             BlueprintName = "HebrewScanner"
             ReferencedContainer = "container:HebrewScanner.xcodeproj">
          </BuildableReference>
@@ -86,7 +86,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "21F72F3C2E36F02300B409E5"
-            BuildableName = "HebrewScanner.app"
+            BuildableName = "Ayin.app"
             BlueprintName = "HebrewScanner"
             ReferencedContainer = "container:HebrewScanner.xcodeproj">
          </BuildableReference>

@@ -6,7 +6,7 @@ if [ -n "$BUILT_PRODUCTS_DIR" ]; then
     APP_BUILD_PATH="$BUILT_PRODUCTS_DIR/$FULL_PRODUCT_NAME"
 else
     # Fallback for manual runs
-    APP_NAME="HebrewScanner"
+    APP_NAME="Ayin"
     APP_BUILD_PATH="build/Build/Products/Debug/${APP_NAME}.app"
 fi
 
