@@ -10,11 +10,161 @@ import SwiftUI
 
 struct OCRBox: Identifiable {
     let id = UUID()
-    let text: String
+    var text: String
     let frame: CGRect
     let lineId: Int      // Unique line identifier (combines block, par, line)
     let wordNum: Int
-    var isMargin: Bool = false  // True if this word is in the margin column
+    var isMargin: Bool = false       // True if this word is in the margin column
+    var isPlaceholder: Bool = false  // True if this word was replaced with [...]
+}
+
+enum StructuralRole {
+    case header
+    case footer
+    case body
+    case sectionHeading
+}
+
+struct DetectedParagraph {
+    let lineIds: [Int]
+    let role: StructuralRole
+    let sectionNumber: String?   // e.g. "א.", "1.", "(ב)"
+}
+
+struct PageStructure {
+    let paragraphs: [DetectedParagraph]   // ordered top-to-bottom
+    let headerLineIds: Set<Int>
+    let footerLineIds: Set<Int>
+}
+
+enum ScriptClass: Equatable, CustomStringConvertible {
+    case hebrew         // Contains Hebrew characters
+    case hebrewMixed    // Hebrew + other scripts (common in OCR)
+    case latinOnly      // Pure Latin letters only — likely garbage in Hebrew docs
+    case number         // Digits, possibly with punctuation (e.g. "58-003-387-6")
+    case punctuation    // Only punctuation/symbols
+    case sectionMarker  // Patterns like (א), (1), א., 1. etc.
+    case garbage        // Repeated chars, bidi marks only, obvious nonsense
+
+    var description: String {
+        switch self {
+        case .hebrew: return "heb"
+        case .hebrewMixed: return "heb+"
+        case .latinOnly: return "lat"
+        case .number: return "num"
+        case .punctuation: return "punc"
+        case .sectionMarker: return "sect"
+        case .garbage: return "garb"
+        }
+    }
+}
+
+/// Section marker patterns for filtering (reused from DocumentStructure)
+private let sectionMarkerPattern = try! NSRegularExpression(
+    pattern: "^[\\(]?[\u{05D0}-\u{05EA}a-zA-Z0-9]+[\\)\\.]?$"
+)
+
+func classifyScript(_ text: String) -> ScriptClass {
+    // Strip bidi control characters for analysis
+    let bidiChars = CharacterSet(charactersIn: "\u{200E}\u{200F}\u{202A}\u{202B}\u{202C}\u{202D}\u{202E}\u{2066}\u{2067}\u{2068}\u{2069}")
+    let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        .unicodeScalars.filter { !bidiChars.contains($0) }
+        .map { Character($0) }
+    let str = String(cleaned)
+
+    guard !str.isEmpty else { return .garbage }
+
+    // Count character types
+    var hebrewCount = 0
+    var latinCount = 0
+    var digitCount = 0
+    var punctCount = 0
+    var otherCount = 0
+
+    for scalar in str.unicodeScalars {
+        let v = scalar.value
+        if v >= 0x0590 && v <= 0x05FF {
+            hebrewCount += 1
+        } else if (v >= 0x0041 && v <= 0x005A) || (v >= 0x0061 && v <= 0x007A) {
+            latinCount += 1
+        } else if v >= 0x0030 && v <= 0x0039 {
+            digitCount += 1
+        } else if CharacterSet.punctuationCharacters.contains(scalar) ||
+                    CharacterSet.symbols.contains(scalar) ||
+                    scalar == "-" || scalar == "(" || scalar == ")" ||
+                    scalar == "." || scalar == "," || scalar == "'" ||
+                    scalar == "\"" || scalar == "/" || scalar == "\\" {
+            punctCount += 1
+        } else {
+            otherCount += 1
+        }
+    }
+
+    let totalChars = str.count
+
+    // Garbage: repeated character patterns (3+ of the same char in a row)
+    if totalChars >= 4 {
+        var maxRepeat = 1
+        var currentRepeat = 1
+        let chars = Array(str)
+        for i in 1..<chars.count {
+            if chars[i] == chars[i-1] {
+                currentRepeat += 1
+                maxRepeat = max(maxRepeat, currentRepeat)
+            } else {
+                currentRepeat = 1
+            }
+        }
+        if maxRepeat >= 4 || (Double(maxRepeat) / Double(totalChars) > 0.5 && totalChars > 5) {
+            return .garbage
+        }
+    }
+
+    // Garbage: only bidi marks / whitespace remained
+    if totalChars == 0 || (hebrewCount == 0 && latinCount == 0 && digitCount == 0 && punctCount == totalChars && totalChars <= 1) {
+        return .garbage
+    }
+
+    // Section markers: (א), א., 1., (1), etc.
+    // Exclude pure Latin words (e.g. WIN, BIR, TERA) — those are OCR garbage, not markers.
+    if totalChars <= 5 && (hebrewCount > 0 || digitCount > 0 || punctCount > 0) {
+        let range = NSRange(str.startIndex..., in: str)
+        if sectionMarkerPattern.firstMatch(in: str, range: range) != nil {
+            return .sectionMarker
+        }
+    }
+
+    // Pure punctuation
+    if hebrewCount == 0 && latinCount == 0 && digitCount == 0 {
+        return .punctuation
+    }
+
+    // Numbers (possibly with punctuation like dashes, periods)
+    if hebrewCount == 0 && latinCount == 0 && digitCount > 0 {
+        return .number
+    }
+
+    // Hebrew present
+    if hebrewCount > 0 {
+        if latinCount > 0 {
+            return .hebrewMixed
+        }
+        return .hebrew
+    }
+
+    // Latin only (no Hebrew at all) — likely OCR garbage in Hebrew documents
+    if latinCount > 0 && hebrewCount == 0 {
+        return .latinOnly
+    }
+
+    return .punctuation
+}
+
+/// What to do with a word during TSV parsing.
+private enum WordAction {
+    case keep        // Accept as-is
+    case placeholder // Replace with [...]
+    case drop        // Remove entirely
 }
 
 func parseTesseractTSV(_ tsv: String, imageSize: CGSize) -> [OCRBox] {
@@ -39,7 +189,25 @@ func parseTesseractTSV(_ tsv: String, imageSize: CGSize) -> [OCRBox] {
                let conf = Double(parts[10]) {
 
                 if !text.isEmpty {
-                    if conf > 30 {
+                    let scriptClass = classifyScript(text)
+                    let action: WordAction
+
+                    switch scriptClass {
+                    case .hebrew, .hebrewMixed:
+                        // Hebrew text: accept with lower threshold (Tesseract gives Hebrew lower scores)
+                        action = conf > 5 ? .keep : .placeholder
+                    case .number, .punctuation, .sectionMarker:
+                        // Numbers and section markers: keep at moderate threshold
+                        action = conf > 20 ? .keep : .placeholder
+                    case .latinOnly:
+                        // Keep all Latin words — the language model decides later
+                        action = .keep
+                    case .garbage:
+                        // Obvious garbage patterns: placeholder
+                        action = .placeholder
+                    }
+
+                    if action != .drop {
                         let rect = CGRect(x: left, y: top, width: width, height: height)
 
                         // Check for duplicate/overlapping boxes (can happen with heb+eng)
@@ -58,10 +226,15 @@ func parseTesseractTSV(_ tsv: String, imageSize: CGSize) -> [OCRBox] {
                         } else {
                             // Combine block, par, line into unique lineId
                             let lineId = blockNum * 1000000 + parNum * 1000 + lineNum
-                            boxes.append(OCRBox(text: text, frame: rect, lineId: lineId, wordNum: wordNum))
+                            let isPlaceholder = (action == .placeholder)
+                            let displayText = isPlaceholder ? "[...]" : text
+                            if isPlaceholder {
+                                print("⚠️ Placeholder [\(scriptClass)] '\(text)' conf=\(String(format: "%.1f", conf))")
+                            }
+                            boxes.append(OCRBox(text: displayText, frame: rect, lineId: lineId, wordNum: wordNum, isPlaceholder: isPlaceholder))
                         }
                     } else {
-                        print("⚠️ Dropped word '\(text)' with confidence \(conf)")
+                        print("⚠️ Dropped [\(scriptClass)] '\(text)' conf=\(String(format: "%.1f", conf))")
                     }
                 }
             }

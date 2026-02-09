@@ -6,11 +6,6 @@
 	objectVersion = 77;
 	objects = {
 
-/* Begin PBXBuildFile section */
-		21A46C9A2E36F924000183EB /* heb.traineddata in Resources */ = {isa = PBXBuildFile; fileRef = 21A46C962E36F924000183EB /* heb.traineddata */; };
-		21A46CAB2E57A000000183EB /* eng.traineddata in Resources */ = {isa = PBXBuildFile; fileRef = 21A46CAA2E57A000000183EB /* eng.traineddata */; };
-/* End PBXBuildFile section */
-
 /* Begin PBXContainerItemProxy section */
 		21F72F4B2E36F02400B409E5 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -29,12 +24,10 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		21A46C962E36F924000183EB /* heb.traineddata */ = {isa = PBXFileReference; lastKnownFileType = file; path = heb.traineddata; sourceTree = "<group>"; };
 		21A46C9E2E37027E000183EB /* libarchive.13.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = libarchive.13.dylib; sourceTree = "<group>"; };
 		21A46C9F2E37027E000183EB /* libleptonica.6.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = libleptonica.6.dylib; sourceTree = "<group>"; };
 		21A46CA02E37027E000183EB /* libtesseract.5.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = libtesseract.5.dylib; sourceTree = "<group>"; };
-		21A46CAA2E57A000000183EB /* eng.traineddata */ = {isa = PBXFileReference; lastKnownFileType = file; path = eng.traineddata; sourceTree = "<group>"; };
-		21F72F3D2E36F02300B409E5 /* HebrewScanner.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HebrewScanner.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		21F72F3D2E36F02300B409E5 /* HebrewScanner.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; name = HebrewScanner.app; path = Ayin.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		21F72F4A2E36F02400B409E5 /* HebrewScannerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HebrewScannerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		21F72F542E36F02400B409E5 /* HebrewScannerUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HebrewScannerUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -82,23 +75,6 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		21A46C972E36F924000183EB /* tessdata */ = {
-			isa = PBXGroup;
-			children = (
-				21A46CAA2E57A000000183EB /* eng.traineddata */,
-				21A46C962E36F924000183EB /* heb.traineddata */,
-			);
-			path = tessdata;
-			sourceTree = "<group>";
-		};
-		21A46C992E36F924000183EB /* Resources */ = {
-			isa = PBXGroup;
-			children = (
-				21A46C972E36F924000183EB /* tessdata */,
-			);
-			path = Resources;
-			sourceTree = "<group>";
-		};
 		21A46CA12E37027E000183EB /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
@@ -116,7 +92,6 @@
 				21F72F4D2E36F02400B409E5 /* HebrewScannerTests */,
 				21F72F572E36F02400B409E5 /* HebrewScannerUITests */,
 				21F72F3E2E36F02300B409E5 /* Products */,
-				21A46C992E36F924000183EB /* Resources */,
 				21A46CA12E37027E000183EB /* Frameworks */,
 			);
 			sourceTree = "<group>";
@@ -253,8 +228,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				21A46CAB2E57A000000183EB /* eng.traineddata in Resources */,
-				21A46C9A2E36F924000183EB /* heb.traineddata in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -292,7 +265,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -e\n\n# Create directories\nmkdir -p \"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/Contents/Frameworks\"\nmkdir -p \"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/Contents/Resources/tessdata\"\n\n# Copy frameworks\ncp \"${SRCROOT}/Frameworks/\"*.dylib \"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/Contents/Frameworks/\"\n\n# Copy tessdata\ncp \"${SRCROOT}/Resources/tessdata/\"* \"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/Contents/Resources/tessdata/\"\n\n# Strip stale Homebrew signatures so install_name_tool doesn't warn\nfor dylib in \"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/Contents/Frameworks/\"*.dylib; do\n    chmod +w \"$dylib\"\n    codesign --remove-signature \"$dylib\"\ndone\n\n# Fix library paths\nfor dylib in \"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/Contents/Frameworks/\"*.dylib; do\n    install_name_tool -id \"@rpath/$(basename \"$dylib\")\" \"$dylib\"\ndone\n\ninstall_name_tool -change \"/opt/homebrew/opt/leptonica/lib/libleptonica.6.dylib\" \"@rpath/libleptonica.6.dylib\" \"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/Contents/Frameworks/libtesseract.5.dylib\"\n\n# Sign frameworks\nif [ -n \"${EXPANDED_CODE_SIGN_IDENTITY}\" ]; then\n    for dylib in \"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/Contents/Frameworks/\"*.dylib; do\n        codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" --timestamp --options runtime \"$dylib\"\n    done\nfi\n";
+			shellScript = "set -e\n\n# Create directories\nmkdir -p \"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/Contents/Frameworks\"\nmkdir -p \"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/Contents/Resources/tessdata\"\n\n# Copy frameworks\ncp \"${SRCROOT}/Frameworks/\"*.dylib \"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/Contents/Frameworks/\"\n\n# Copy tessdata\ncp \"${SRCROOT}/HebrewScanner/Resources/tessdata/\"* \"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/Contents/Resources/tessdata/\"\n\n# Strip stale Homebrew signatures so install_name_tool doesn't warn\nfor dylib in \"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/Contents/Frameworks/\"*.dylib; do\n    chmod +w \"$dylib\"\n    codesign --remove-signature \"$dylib\"\ndone\n\n# Fix library paths\nfor dylib in \"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/Contents/Frameworks/\"*.dylib; do\n    install_name_tool -id \"@rpath/$(basename \"$dylib\")\" \"$dylib\"\ndone\n\ninstall_name_tool -change \"/opt/homebrew/opt/leptonica/lib/libleptonica.6.dylib\" \"@rpath/libleptonica.6.dylib\" \"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/Contents/Frameworks/libtesseract.5.dylib\"\n\n# Sign frameworks\nif [ -n \"${EXPANDED_CODE_SIGN_IDENTITY}\" ]; then\n    for dylib in \"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/Contents/Frameworks/\"*.dylib; do\n        codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" --timestamp --options runtime \"$dylib\"\n    done\nfi\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -465,7 +438,6 @@
 			buildSettings = {
 				ARCHS = "$(ARCHS_STANDARD)";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				EXCLUDED_ARCHS = x86_64;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = HebrewScanner/HebrewScanner.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
@@ -478,6 +450,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readwrite;
+				EXCLUDED_ARCHS = x86_64;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "© 2026 Aviah Morag. All rights reserved.";
@@ -511,7 +484,6 @@
 			buildSettings = {
 				ARCHS = "$(ARCHS_STANDARD)";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				EXCLUDED_ARCHS = x86_64;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = HebrewScanner/HebrewScanner.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
@@ -524,6 +496,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readwrite;
+				EXCLUDED_ARCHS = x86_64;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "© 2026 Aviah Morag. All rights reserved.";

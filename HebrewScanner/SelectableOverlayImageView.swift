@@ -109,6 +109,7 @@ class PassThroughTextView: NSTextView {
 
 class TransparentSelectionOverlay: NSView, NSMenuDelegate {
     weak var containerView: NSView?
+    var pageStructure: PageStructure?
     private var isDragging = false
     private var dragStartPoint: CGPoint = .zero
     private var selectedViews: Set<PassThroughTextView> = []
@@ -303,8 +304,13 @@ class TransparentSelectionOverlay: NSView, NSMenuDelegate {
         let mainViews = views.filter { !$0.isMargin }
         let marginViews = views.filter { $0.isMargin && isSignificantText($0.string) }
 
-        // Build main text
-        let mainText = buildTextFromViews(mainViews)
+        // Build main text using structure if available
+        let mainText: String
+        if let structure = pageStructure {
+            mainText = buildStructuredTextFromViews(mainViews, structure: structure)
+        } else {
+            mainText = buildTextFromViews(mainViews)
+        }
 
         // Build margin text (if any significant words)
         let marginText = buildTextFromViews(marginViews)
@@ -388,7 +394,48 @@ class TransparentSelectionOverlay: NSView, NSMenuDelegate {
 
         return paragraphTexts.joined(separator: "\n\n")
     }
-    
+
+    private func buildStructuredTextFromViews(_ views: [PassThroughTextView], structure: PageStructure) -> String {
+        guard !views.isEmpty else { return "" }
+
+        let selectedLineIds = Set(views.map { $0.lineId })
+
+        // Group views by lineId for word assembly
+        var lineGroups: [Int: [PassThroughTextView]] = [:]
+        for view in views {
+            lineGroups[view.lineId, default: []].append(view)
+        }
+
+        var parts: [String] = []
+
+        for paragraph in structure.paragraphs {
+            // Only include lines from this paragraph that are in the selection
+            let matchingLineIds = paragraph.lineIds.filter { selectedLineIds.contains($0) }
+            guard !matchingLineIds.isEmpty else { continue }
+
+            var allWords: [String] = []
+            for lineId in matchingLineIds {
+                guard let lineViews = lineGroups[lineId] else { continue }
+                let sorted = lineViews.sorted { $0.wordNum < $1.wordNum }
+                allWords.append(contentsOf: sorted.map { $0.string })
+            }
+
+            let text = allWords.joined(separator: " ").trimmingCharacters(in: .whitespaces)
+            guard !text.isEmpty else { continue }
+
+            switch paragraph.role {
+            case .header:
+                parts.append("[כותרת עליונה] " + text)
+            case .footer:
+                parts.append("[כותרת תחתונה] " + text)
+            case .sectionHeading, .body:
+                parts.append(text)
+            }
+        }
+
+        return parts.joined(separator: "\n\n")
+    }
+
     private func copyToPasteboard(_ text: String) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
@@ -654,6 +701,7 @@ struct SelectableOverlayImageView: NSViewRepresentable {
     let image: NSImage
     let boxes: [OCRBox]
     let zoomLevel: CGFloat
+    let pageStructure: PageStructure?
     let onPageNavigation: ((Bool) -> Void)? // true for next, false for previous
     let onZoomChange: ((CGFloat, CGPoint) -> Void)?
 
@@ -840,6 +888,7 @@ struct SelectableOverlayImageView: NSViewRepresentable {
         selectionOverlay.frame = containerView.bounds
         selectionOverlay.autoresizingMask = [.width, .height]
         selectionOverlay.containerView = containerView
+        selectionOverlay.pageStructure = pageStructure
         selectionOverlay.wantsLayer = true
         selectionOverlay.layer?.zPosition = 1000 // Ensure it's on top
         containerView.addSubview(selectionOverlay)

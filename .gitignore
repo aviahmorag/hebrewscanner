@@ -25,5 +25,9 @@ DerivedData/
 *.zip
 *.app
 
+# ML model (too large for git — distribute separately or use Git LFS)
+*.mlpackage
+*.mlmodelc
+
 # Claude settings
 .claude/settings.local.json

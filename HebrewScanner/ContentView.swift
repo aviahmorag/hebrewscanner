@@ -20,6 +20,7 @@ struct ContentView: View {
     @State private var lastOCRCompletionTime: Date?
     @State private var isExporting = false
     @State private var exportProgress: Double = 0
+    @State private var pageStructure: PageStructure?
     
     // PDF support
     @State private var pdfDocument: PDFDocument?
@@ -41,6 +42,7 @@ struct ContentView: View {
                     image: image,
                     boxes: ocrBoxes,
                     zoomLevel: zoomLevel,
+                    pageStructure: pageStructure,
                     onPageNavigation: totalPages > 1 ? { isNext in
                         if isNext {
                             nextPage()
@@ -250,7 +252,10 @@ struct ContentView: View {
 
             let (text, tsv) = try await runTesseractOCR(imageURL: ocrURL)
             self.ocrText = text
-            self.ocrBoxes = parseTesseractTSV(tsv, imageSize: image.size)
+            var boxes = parseTesseractTSV(tsv, imageSize: image.size)
+            boxes = await LanguageModelPostProcessor.process(boxes: boxes)
+            self.ocrBoxes = boxes
+            self.pageStructure = analyzePageStructure(boxes: self.ocrBoxes)
             self.lastOCRCompletionTime = Date()
             print("✅ Reloaded \(self.ocrBoxes.count) boxes after resize")
 
@@ -261,6 +266,7 @@ struct ContentView: View {
         } catch {
             self.ocrText = String(localized: "⚠️ שגיאה בהרצת OCR: \(error.localizedDescription)")
             self.ocrBoxes = []
+            self.pageStructure = nil
         }
         isLoading = false
     }
@@ -316,6 +322,7 @@ struct ContentView: View {
         self.image = nsImage
         self.imageURL = url
         self.ocrBoxes = []
+        self.pageStructure = nil
         isLoading = true
         
         // Resize window to match image aspect ratio
@@ -334,7 +341,10 @@ struct ContentView: View {
                 
                 if !Task.isCancelled {
                     self.ocrText = text
-                    self.ocrBoxes = parseTesseractTSV(tsv, imageSize: nsImage.size)
+                    var boxes = parseTesseractTSV(tsv, imageSize: nsImage.size)
+                    boxes = await LanguageModelPostProcessor.process(boxes: boxes)
+                    self.ocrBoxes = boxes
+                    self.pageStructure = analyzePageStructure(boxes: self.ocrBoxes)
                     self.lastOCRCompletionTime = Date()
                     print("✅ Loaded \(self.ocrBoxes.count) boxes")
                 }
@@ -344,6 +354,7 @@ struct ContentView: View {
                 if !Task.isCancelled {
                     self.ocrText = String(localized: "⚠️ שגיאה בהרצת OCR: \(error.localizedDescription)")
                     self.ocrBoxes = []
+                    self.pageStructure = nil
                 }
             }
 
@@ -372,6 +383,7 @@ struct ContentView: View {
         self.image = pageImage
         self.currentPageIndex = pageIndex
         self.ocrBoxes = [] // Clear old OCR boxes immediately
+        self.pageStructure = nil
         
         // Keep window size stable when navigating pages
         // resizeWindowToFitImage(pageImage)
@@ -399,7 +411,10 @@ struct ContentView: View {
                 // Only update if we're still on the same page and task wasn't cancelled
                 if self.currentPageIndex == pageIndex && !Task.isCancelled {
                     self.ocrText = text
-                    self.ocrBoxes = parseTesseractTSV(tsv, imageSize: pageImage.size)
+                    var boxes = parseTesseractTSV(tsv, imageSize: pageImage.size)
+                    boxes = await LanguageModelPostProcessor.process(boxes: boxes)
+                    self.ocrBoxes = boxes
+                    self.pageStructure = analyzePageStructure(boxes: self.ocrBoxes)
                     self.lastOCRCompletionTime = Date()
                     print("✅ Loaded \(self.ocrBoxes.count) boxes from PDF page")
                 }
@@ -412,6 +427,7 @@ struct ContentView: View {
                 if self.currentPageIndex == pageIndex && !Task.isCancelled {
                     self.ocrText = String(localized: "⚠️ שגיאה בהרצת OCR: \(error.localizedDescription)")
                     self.ocrBoxes = []
+                    self.pageStructure = nil
                 }
             }
 
@@ -626,7 +642,7 @@ struct ContentView: View {
     }
 
     private func generateHTMLForDocument() async throws -> String {
-        var pages: [(mainText: String, marginText: String)] = []
+        var pages: [(mainText: String, marginText: String, structure: PageStructure?)] = []
 
         if let pdfDoc = pdfDocument {
             // Process all PDF pages
@@ -643,13 +659,15 @@ struct ContentView: View {
 
                 do {
                     let (_, tsv) = try await runTesseractOCR(imageURL: tempURL)
-                    let boxes = parseTesseractTSV(tsv, imageSize: pageImage.size)
-                    let (main, margin) = extractTextFromBoxes(boxes)
-                    pages.append((main, margin))
+                    var boxes = parseTesseractTSV(tsv, imageSize: pageImage.size)
+                    boxes = await LanguageModelPostProcessor.process(boxes: boxes)
+                    let structure = analyzePageStructure(boxes: boxes)
+                    let (main, margin) = extractTextFromBoxes(boxes, structure: structure)
+                    pages.append((main, margin, structure))
                     print("📄 Exported page \(pageIndex + 1)/\(pageCount)")
                 } catch {
                     print("⚠️ OCR failed for page \(pageIndex + 1): \(error)")
-                    pages.append(("", ""))
+                    pages.append(("", "", nil))
                 }
 
                 try? FileManager.default.removeItem(at: tempURL)
@@ -662,9 +680,11 @@ struct ContentView: View {
 
             let tempURL = createTempImageFile(from: currentImage)
             let (_, tsv) = try await runTesseractOCR(imageURL: tempURL)
-            let boxes = parseTesseractTSV(tsv, imageSize: currentImage.size)
-            let (main, margin) = extractTextFromBoxes(boxes)
-            pages.append((main, margin))
+            var boxes = parseTesseractTSV(tsv, imageSize: currentImage.size)
+            boxes = await LanguageModelPostProcessor.process(boxes: boxes)
+            let structure = analyzePageStructure(boxes: boxes)
+            let (main, margin) = extractTextFromBoxes(boxes, structure: structure)
+            pages.append((main, margin, structure))
 
             try? FileManager.default.removeItem(at: tempURL)
         }
@@ -676,11 +696,16 @@ struct ContentView: View {
         return buildHTML(pages: pages)
     }
 
-    private func extractTextFromBoxes(_ boxes: [OCRBox]) -> (main: String, margin: String) {
+    private func extractTextFromBoxes(_ boxes: [OCRBox], structure: PageStructure? = nil) -> (main: String, margin: String) {
         let mainBoxes = boxes.filter { !$0.isMargin }
         let marginBoxes = boxes.filter { $0.isMargin && isSignificantText($0.text) }
 
-        let mainText = buildTextFromBoxes(mainBoxes)
+        let mainText: String
+        if let structure = structure {
+            mainText = buildStructuredText(boxes: mainBoxes, structure: structure)
+        } else {
+            mainText = buildTextFromBoxes(mainBoxes)
+        }
         let marginText = buildTextFromBoxes(marginBoxes)
 
         return (mainText, marginText)
@@ -759,7 +784,40 @@ struct ContentView: View {
         return paragraphTexts.joined(separator: "\n\n")
     }
 
-    private func buildHTML(pages: [(mainText: String, marginText: String)]) -> String {
+    private func buildStructuredText(boxes: [OCRBox], structure: PageStructure) -> String {
+        // Group boxes by lineId
+        var lineGroups: [Int: [OCRBox]] = [:]
+        for box in boxes {
+            lineGroups[box.lineId, default: []].append(box)
+        }
+
+        var parts: [String] = []
+
+        for paragraph in structure.paragraphs {
+            var allWords: [String] = []
+            for lineId in paragraph.lineIds {
+                guard let lineBoxes = lineGroups[lineId] else { continue }
+                let sorted = lineBoxes.sorted { $0.wordNum < $1.wordNum }
+                allWords.append(contentsOf: sorted.map { $0.text })
+            }
+
+            let text = allWords.joined(separator: " ").trimmingCharacters(in: .whitespaces)
+            guard !text.isEmpty else { continue }
+
+            switch paragraph.role {
+            case .header:
+                parts.append("[כותרת עליונה] " + text)
+            case .footer:
+                parts.append("[כותרת תחתונה] " + text)
+            case .sectionHeading, .body:
+                parts.append(text)
+            }
+        }
+
+        return parts.joined(separator: "\n\n")
+    }
+
+    private func buildHTML(pages: [(mainText: String, marginText: String, structure: PageStructure?)]) -> String {
         let documentTitle = imageURL?.deletingPathExtension().lastPathComponent ?? String(localized: "מסמך")
 
         var html = """
@@ -825,9 +883,6 @@ struct ContentView: View {
                     font-size: 14px;
                     color: #555;
                 }
-                .main-text {
-                    white-space: pre-wrap;
-                }
                 .margin-text {
                     white-space: pre-wrap;
                     font-style: italic;
@@ -837,6 +892,36 @@ struct ContentView: View {
                     color: #888;
                     font-size: 12px;
                     margin-bottom: 8px;
+                }
+                .header-text {
+                    text-align: center;
+                    font-size: 14px;
+                    color: #666;
+                    padding-bottom: 8px;
+                    margin-bottom: 12px;
+                    border-bottom: 1px solid #ddd;
+                }
+                .footer-text {
+                    text-align: center;
+                    font-size: 14px;
+                    color: #666;
+                    padding-top: 8px;
+                    margin-top: 12px;
+                    border-top: 1px solid #ddd;
+                }
+                .section-heading {
+                    font-weight: bold;
+                    margin: 1em 0 0.5em 0;
+                }
+                .section-number {
+                    font-weight: bold;
+                }
+                .main-text {
+                    white-space: pre-wrap;
+                }
+                .placeholder {
+                    color: #999;
+                    font-style: italic;
                 }
                 @media print {
                     body {
@@ -872,12 +957,19 @@ struct ContentView: View {
 
             """
 
+            let mainContentHTML: String
+            if let structure = page.structure {
+                mainContentHTML = buildStructuredHTML(structure: structure, fallbackText: page.mainText)
+            } else {
+                mainContentHTML = "<div class=\"main-text\">\(escapeHTMLWithPlaceholders(page.mainText))</div>"
+            }
+
             if hasMargin {
                 html += """
                             <table class="content-table">
                                 <tr>
                                     <td class="main-column">
-                                        <div class="main-text">\(escapeHTML(page.mainText))</div>
+                                        \(mainContentHTML)
                                     </td>
                                     <td class="margin-column">
                                         <div class="margin-label">\(String(localized: "הערות שוליים"))</div>
@@ -889,7 +981,7 @@ struct ContentView: View {
                 """
             } else {
                 html += """
-                            <div class="main-text">\(escapeHTML(page.mainText))</div>
+                            \(mainContentHTML)
 
                 """
             }
@@ -909,6 +1001,49 @@ struct ContentView: View {
         return html
     }
 
+    private func buildStructuredHTML(structure: PageStructure, fallbackText: String) -> String {
+        // Build HTML from the plain-text paragraphs that were already assembled
+        // We split by \n\n to reconstruct paragraph boundaries
+        let textParagraphs = fallbackText.components(separatedBy: "\n\n")
+
+        // If structure paragraph count matches text paragraph count, pair them
+        guard structure.paragraphs.count == textParagraphs.count else {
+            // Mismatch - fall back to pre-wrap
+            return "<div class=\"main-text\">\(escapeHTMLWithPlaceholders(fallbackText))</div>"
+        }
+
+        var htmlParts: [String] = []
+        for (i, paragraph) in structure.paragraphs.enumerated() {
+            let text = textParagraphs[i].trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { continue }
+
+            let escaped = escapeHTMLWithPlaceholders(text)
+
+            switch paragraph.role {
+            case .header:
+                htmlParts.append("<div class=\"header-text\">\(escaped)</div>")
+            case .footer:
+                htmlParts.append("<div class=\"footer-text\">\(escaped)</div>")
+            case .sectionHeading:
+                if let sectionNum = paragraph.sectionNumber {
+                    let escapedNum = escapeHTML(sectionNum)
+                    // Remove the section number from the start of text to wrap it separately
+                    let bodyText = text.hasPrefix(sectionNum)
+                        ? String(text.dropFirst(sectionNum.count)).trimmingCharacters(in: .whitespaces)
+                        : text
+                    let escapedBody = escapeHTMLWithPlaceholders(bodyText)
+                    htmlParts.append("<p class=\"section-heading\"><span class=\"section-number\">\(escapedNum)</span> \(escapedBody)</p>")
+                } else {
+                    htmlParts.append("<p class=\"section-heading\">\(escaped)</p>")
+                }
+            case .body:
+                htmlParts.append("<p>\(escaped)</p>")
+            }
+        }
+
+        return htmlParts.joined(separator: "\n")
+    }
+
     private func escapeHTML(_ text: String) -> String {
         return text
             .replacingOccurrences(of: "&", with: "&amp;")
@@ -916,6 +1051,15 @@ struct ContentView: View {
             .replacingOccurrences(of: ">", with: "&gt;")
             .replacingOccurrences(of: "\"", with: "&quot;")
             .replacingOccurrences(of: "'", with: "&#39;")
+    }
+
+    /// Escape HTML and wrap `[...]` placeholders in styled spans.
+    private func escapeHTMLWithPlaceholders(_ text: String) -> String {
+        let escaped = escapeHTML(text)
+        return escaped.replacingOccurrences(
+            of: "[...]",
+            with: "<span class=\"placeholder\">[...]</span>"
+        )
     }
 }
 
