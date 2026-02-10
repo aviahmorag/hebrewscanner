@@ -7,6 +7,7 @@
 
 import Testing
 import CoreGraphics
+import ZIPFoundation
 @testable import HebrewScanner
 
 // MARK: - Test Helpers
@@ -584,5 +585,185 @@ struct PlaceholderCollapsingTests {
         let input = "[...] [...] שלום [...] [...]"
         let result = collapseConsecutivePlaceholders(input)
         #expect(result == "[...] שלום [...]")
+    }
+}
+
+// MARK: - DOCX Exporter Tests
+
+struct DOCXExporterTests {
+
+    private func singlePage(_ text: String, structure: PageStructure? = nil) -> [(mainText: String, marginText: String, structure: PageStructure?)] {
+        [(mainText: text, marginText: "", structure: structure)]
+    }
+
+    @Test func generatesValidZipData() throws {
+        let data = try DOCXExporter.export(pages: singlePage("שלום עולם"), title: "בדיקה")
+        // ZIP files start with PK magic bytes (0x50, 0x4B)
+        #expect(data.count > 4)
+        #expect(data[0] == 0x50)
+        #expect(data[1] == 0x4B)
+    }
+
+    @Test func containsRequiredEntries() throws {
+        let data = try DOCXExporter.export(pages: singlePage("טקסט"), title: "מסמך")
+        let archive = try Archive(data: data, accessMode: .read)
+
+        let paths = Set(archive.map { $0.path })
+        #expect(paths.contains("[Content_Types].xml"))
+        #expect(paths.contains("_rels/.rels"))
+        #expect(paths.contains("word/document.xml"))
+        #expect(paths.contains("word/styles.xml"))
+        #expect(paths.contains("word/_rels/document.xml.rels"))
+    }
+
+    @Test func hebrewTextAppearsInDocumentXml() throws {
+        let hebrewText = "הנה טקסט בעברית"
+        let data = try DOCXExporter.export(pages: singlePage(hebrewText), title: "מסמך")
+        let archive = try Archive(data: data, accessMode: .read)
+
+        var documentContent = ""
+        guard let entry = archive["word/document.xml"] else {
+            Issue.record("word/document.xml not found")
+            return
+        }
+        _ = try archive.extract(entry) { chunk in
+            documentContent += String(data: chunk, encoding: .utf8) ?? ""
+        }
+
+        #expect(documentContent.contains("הנה טקסט בעברית"))
+    }
+
+    @Test func sectionHeadingIsBold() throws {
+        let structure = PageStructure(
+            paragraphs: [
+                DetectedParagraph(lineIds: [1001001], role: .sectionHeading, sectionNumber: "א.", isCentered: false),
+            ],
+            headerLineIds: [],
+            footerLineIds: []
+        )
+        let data = try DOCXExporter.export(
+            pages: [(mainText: "א. מבוא", marginText: "", structure: structure)],
+            title: "מסמך"
+        )
+        let archive = try Archive(data: data, accessMode: .read)
+
+        var documentContent = ""
+        guard let entry = archive["word/document.xml"] else {
+            Issue.record("word/document.xml not found")
+            return
+        }
+        _ = try archive.extract(entry) { chunk in
+            documentContent += String(data: chunk, encoding: .utf8) ?? ""
+        }
+
+        #expect(documentContent.contains("<w:b/>"))
+        #expect(documentContent.contains("<w:bCs/>"))
+        #expect(documentContent.contains("Heading1"))
+    }
+
+    @Test func xmlEscapesSpecialCharacters() {
+        let escaped = DOCXExporter.escapeXML("a < b & c > d")
+        #expect(escaped == "a &lt; b &amp; c &gt; d")
+    }
+
+    @Test func rtlMarkupPresent() throws {
+        let data = try DOCXExporter.export(pages: singlePage("שלום"), title: "מסמך")
+        let archive = try Archive(data: data, accessMode: .read)
+
+        var documentContent = ""
+        guard let entry = archive["word/document.xml"] else {
+            Issue.record("word/document.xml not found")
+            return
+        }
+        _ = try archive.extract(entry) { chunk in
+            documentContent += String(data: chunk, encoding: .utf8) ?? ""
+        }
+
+        #expect(documentContent.contains("<w:bidi/>"))
+        #expect(documentContent.contains("<w:rtl/>"))
+    }
+
+    @Test func placeholderRenderedWithItalicGray() throws {
+        let data = try DOCXExporter.export(pages: singlePage("טקסט [...] עוד"), title: "מסמך")
+        let archive = try Archive(data: data, accessMode: .read)
+
+        var documentContent = ""
+        guard let entry = archive["word/document.xml"] else {
+            Issue.record("word/document.xml not found")
+            return
+        }
+        _ = try archive.extract(entry) { chunk in
+            documentContent += String(data: chunk, encoding: .utf8) ?? ""
+        }
+
+        // Placeholder should have italic and gray color properties
+        #expect(documentContent.contains("<w:i/>"))
+        #expect(documentContent.contains("<w:iCs/>"))
+        #expect(documentContent.contains("<w:color w:val=\"999999\"/>"))
+        #expect(documentContent.contains("[...]"))
+    }
+}
+
+// MARK: - Centered Line Detection Tests
+
+struct CenteredLineDetectionTests {
+
+    @Test func detectsCenteredShortLine() {
+        // Page with body lines spanning full width, and one short centered line
+        let fullWidth: CGFloat = 500
+        let pageLeft: CGFloat = 100
+        let pageRight = pageLeft + fullWidth
+
+        let boxes = [
+            // Full-width body lines
+            makeBox(text: "שורה", lineId: 1001001, wordNum: 1, x: pageLeft, y: 10, width: fullWidth, height: 20),
+            makeBox(text: "שורה", lineId: 1001002, wordNum: 1, x: pageLeft, y: 40, width: fullWidth, height: 20),
+            // Short centered line (200px wide, centered at pageLeft + 250 = 350)
+            // center at 350, so left = 250, right = 450 → symmetric within page
+            makeBox(text: "כותרת", lineId: 1001003, wordNum: 1, x: 250, y: 70, width: 200, height: 20),
+            // More full-width lines
+            makeBox(text: "שורה", lineId: 1001004, wordNum: 1, x: pageLeft, y: 100, width: fullWidth, height: 20),
+            makeBox(text: "שורה", lineId: 1001005, wordNum: 1, x: pageLeft, y: 130, width: fullWidth, height: 20),
+        ]
+
+        let structure = analyzePageStructure(boxes: boxes)
+
+        // Find the paragraph containing the short centered line
+        let centeredParas = structure.paragraphs.filter { $0.isCentered }
+        #expect(centeredParas.count >= 1)
+    }
+
+    @Test func doesNotCenterFullWidthLines() {
+        // All lines are full-width — none should be centered
+        let boxes = (0..<6).flatMap { i -> [OCRBox] in
+            let y = CGFloat(10 + i * 30)
+            let lineId = 1001001 + i
+            return [
+                makeBox(text: "מילה", lineId: lineId, wordNum: 1, x: 100, y: y, width: 500, height: 20),
+            ]
+        }
+
+        let structure = analyzePageStructure(boxes: boxes)
+        let centeredParas = structure.paragraphs.filter { $0.isCentered }
+        #expect(centeredParas.isEmpty)
+    }
+
+    @Test func doesNotCenterLeftAlignedShortLine() {
+        // Short line at the right edge (RTL left-aligned) — NOT centered
+        let boxes = [
+            makeBox(text: "שורה", lineId: 1001001, wordNum: 1, x: 100, y: 10, width: 500, height: 20),
+            makeBox(text: "שורה", lineId: 1001002, wordNum: 1, x: 100, y: 40, width: 500, height: 20),
+            // Short line, flush right (for RTL that's "left-aligned")
+            makeBox(text: "קצרה", lineId: 1001003, wordNum: 1, x: 100, y: 70, width: 200, height: 20),
+            makeBox(text: "שורה", lineId: 1001004, wordNum: 1, x: 100, y: 100, width: 500, height: 20),
+            makeBox(text: "שורה", lineId: 1001005, wordNum: 1, x: 100, y: 130, width: 500, height: 20),
+        ]
+
+        let structure = analyzePageStructure(boxes: boxes)
+
+        // The short line's midpoint is at 200 (x=100, width=200 → center=200)
+        // But page center is at 350 (100 + 500/2), so it should NOT be centered
+        let centeredParas = structure.paragraphs.filter { $0.isCentered }
+        #expect(centeredParas.isEmpty)
     }
 }

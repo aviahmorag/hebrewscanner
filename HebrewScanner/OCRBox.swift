@@ -29,6 +29,7 @@ struct DetectedParagraph {
     let lineIds: [Int]
     let role: StructuralRole
     let sectionNumber: String?   // e.g. "א.", "1.", "(ב)"
+    let isCentered: Bool
 }
 
 struct PageStructure {

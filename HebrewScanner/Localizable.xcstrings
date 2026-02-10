@@ -58,6 +58,7 @@
       }
     },
     "הערות שוליים" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -98,12 +99,12 @@
         }
       }
     },
-    "ייצא ל-HTML" : {
+    "ייצא למסמך" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Export to HTML"
+            "value" : "Export to Document"
           }
         }
       }
@@ -142,6 +143,7 @@
       }
     },
     "עמוד %lld" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {

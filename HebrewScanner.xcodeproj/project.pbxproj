@@ -6,6 +6,11 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		21D1B9EA2F3AEACB000E489B /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = 210DOCX022E3A0002000DOCX /* ZIPFoundation */; };
+		21D1B9EB2F3AEACB000E489B /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = 210DOCX032E3A0003000DOCX /* ZIPFoundation */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		21F72F4B2E36F02400B409E5 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -27,7 +32,7 @@
 		21A46C9E2E37027E000183EB /* libarchive.13.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = libarchive.13.dylib; sourceTree = "<group>"; };
 		21A46C9F2E37027E000183EB /* libleptonica.6.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = libleptonica.6.dylib; sourceTree = "<group>"; };
 		21A46CA02E37027E000183EB /* libtesseract.5.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = libtesseract.5.dylib; sourceTree = "<group>"; };
-		21F72F3D2E36F02300B409E5 /* HebrewScanner.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; name = HebrewScanner.app; path = Ayin.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		21F72F3D2E36F02300B409E5 /* Ayin.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Ayin.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		21F72F4A2E36F02400B409E5 /* HebrewScannerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HebrewScannerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		21F72F542E36F02400B409E5 /* HebrewScannerUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HebrewScannerUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -55,6 +60,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				21D1B9EA2F3AEACB000E489B /* ZIPFoundation in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -62,6 +68,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				21D1B9EB2F3AEACB000E489B /* ZIPFoundation in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -99,7 +106,7 @@
 		21F72F3E2E36F02300B409E5 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				21F72F3D2E36F02300B409E5 /* HebrewScanner.app */,
+				21F72F3D2E36F02300B409E5 /* Ayin.app */,
 				21F72F4A2E36F02400B409E5 /* HebrewScannerTests.xctest */,
 				21F72F542E36F02400B409E5 /* HebrewScannerUITests.xctest */,
 			);
@@ -127,9 +134,10 @@
 			);
 			name = HebrewScanner;
 			packageProductDependencies = (
+				210DOCX022E3A0002000DOCX /* ZIPFoundation */,
 			);
 			productName = HebrewScanner;
-			productReference = 21F72F3D2E36F02300B409E5 /* HebrewScanner.app */;
+			productReference = 21F72F3D2E36F02300B409E5 /* Ayin.app */;
 			productType = "com.apple.product-type.application";
 		};
 		21F72F492E36F02400B409E5 /* HebrewScannerTests */ = {
@@ -150,6 +158,7 @@
 			);
 			name = HebrewScannerTests;
 			packageProductDependencies = (
+				210DOCX032E3A0003000DOCX /* ZIPFoundation */,
 			);
 			productName = HebrewScannerTests;
 			productReference = 21F72F4A2E36F02400B409E5 /* HebrewScannerTests.xctest */;
@@ -211,6 +220,9 @@
 			);
 			mainGroup = 21F72F342E36F02300B409E5;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				210DOCX012E3A0001000DOCX /* XCRemoteSwiftPackageReference "ZIPFoundation" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 21F72F3E2E36F02300B409E5 /* Products */;
 			projectDirPath = "";
@@ -459,7 +471,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.0.1;
 				OTHER_LDFLAGS = (
 					"-L$(SRCROOT)/Frameworks",
 					"-ltesseract.5",
@@ -505,7 +517,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.0.1;
 				OTHER_LDFLAGS = (
 					"-L$(SRCROOT)/Frameworks",
 					"-ltesseract.5",
@@ -649,6 +661,30 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		210DOCX012E3A0001000DOCX /* XCRemoteSwiftPackageReference "ZIPFoundation" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/weichsel/ZIPFoundation.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.9.19;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		210DOCX022E3A0002000DOCX /* ZIPFoundation */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 210DOCX012E3A0001000DOCX /* XCRemoteSwiftPackageReference "ZIPFoundation" */;
+			productName = ZIPFoundation;
+		};
+		210DOCX032E3A0003000DOCX /* ZIPFoundation */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 210DOCX012E3A0001000DOCX /* XCRemoteSwiftPackageReference "ZIPFoundation" */;
+			productName = ZIPFoundation;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 21F72F352E36F02300B409E5 /* Project object */;
 }

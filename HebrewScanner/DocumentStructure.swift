@@ -32,7 +32,7 @@ func analyzePageStructure(boxes: [OCRBox]) -> PageStructure {
     guard lineMetrics.count >= 2 else {
         // Too few lines for meaningful structure analysis
         let allLineIds = lineMetrics.map { $0.lineId }
-        let singleParagraph = DetectedParagraph(lineIds: allLineIds, role: .body, sectionNumber: nil)
+        let singleParagraph = DetectedParagraph(lineIds: allLineIds, role: .body, sectionNumber: nil, isCentered: false)
         return PageStructure(paragraphs: [singleParagraph], headerLineIds: [], footerLineIds: [])
     }
 
@@ -267,11 +267,25 @@ private func assignRoles(
     // Build a lookup for line metrics by lineId
     let metricsLookup = Dictionary(uniqueKeysWithValues: lineMetrics.map { ($0.lineId, $0) })
 
+    // Compute page extents for centering detection
+    let allMinX = lineMetrics.map { $0.minX }.min() ?? 0
+    let allMaxX = lineMetrics.map { $0.maxX }.max() ?? 0
+    let pageWidth = allMaxX - allMinX
+    let pageCenter = allMinX + pageWidth / 2
+
+    // Reference width: 80th percentile of body line widths
+    let bodyLineWidths = lineMetrics
+        .filter { !headerLineIds.contains($0.lineId) && !footerLineIds.contains($0.lineId) }
+        .map { $0.width }
+        .sorted()
+    let referenceWidth: CGFloat = bodyLineWidths.isEmpty ? pageWidth : bodyLineWidths[Int(Double(bodyLineWidths.count - 1) * 0.8)]
+
     var result: [DetectedParagraph] = []
 
     // Add header paragraph(s)
     if !headerLineIds.isEmpty {
-        result.append(DetectedParagraph(lineIds: headerLineIds, role: .header, sectionNumber: nil))
+        let centered = isCenteredParagraph(lineIds: headerLineIds, metricsLookup: metricsLookup, pageCenter: pageCenter, referenceWidth: referenceWidth)
+        result.append(DetectedParagraph(lineIds: headerLineIds, role: .header, sectionNumber: nil, isCentered: centered))
     }
 
     // Add body paragraphs with section numbering detection
@@ -285,15 +299,40 @@ private func assignRoles(
         )
         let role: StructuralRole = sectionNum != nil ? .sectionHeading : .body
 
-        result.append(DetectedParagraph(lineIds: lineIds, role: role, sectionNumber: sectionNum))
+        let centered = isCenteredParagraph(lineIds: lineIds, metricsLookup: metricsLookup, pageCenter: pageCenter, referenceWidth: referenceWidth)
+
+        result.append(DetectedParagraph(lineIds: lineIds, role: role, sectionNumber: sectionNum, isCentered: centered))
     }
 
     // Add footer paragraph(s)
     if !footerLineIds.isEmpty {
-        result.append(DetectedParagraph(lineIds: footerLineIds, role: .footer, sectionNumber: nil))
+        let centered = isCenteredParagraph(lineIds: footerLineIds, metricsLookup: metricsLookup, pageCenter: pageCenter, referenceWidth: referenceWidth)
+        result.append(DetectedParagraph(lineIds: footerLineIds, role: .footer, sectionNumber: nil, isCentered: centered))
     }
 
     return result
+}
+
+/// Determines if all lines of a paragraph are centered on the page.
+/// A line is centered if it's shorter than 70% of the reference width AND
+/// its midpoint is within 5% of the page center.
+private func isCenteredParagraph(
+    lineIds: [Int],
+    metricsLookup: [Int: LineMetrics],
+    pageCenter: CGFloat,
+    referenceWidth: CGFloat
+) -> Bool {
+    guard referenceWidth > 0 else { return false }
+    let tolerance = referenceWidth * 0.08
+
+    for lineId in lineIds {
+        guard let metrics = metricsLookup[lineId] else { return false }
+        // Only consider lines that are shorter than the full width
+        guard metrics.width < referenceWidth * 0.7 else { return false }
+        let lineMid = metrics.minX + metrics.width / 2
+        guard abs(lineMid - pageCenter) < tolerance else { return false }
+    }
+    return true
 }
 
 // MARK: - Step 3b: Content-Based Footer Detection

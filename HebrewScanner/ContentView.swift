@@ -118,7 +118,7 @@ struct ContentView: View {
                         Spacer()
 
                         // Export button
-                        Button(action: exportToHTML) {
+                        Button(action: exportToDocument) {
                             Image(systemName: "square.and.arrow.up")
                                 .font(.title2)
                                 .foregroundColor(.primary)
@@ -127,7 +127,7 @@ struct ContentView: View {
                         }
                         .buttonStyle(.plain)
                         .disabled(isLoading || isExporting)
-                        .help("ייצא ל-HTML")
+                        .help("ייצא למסמך")
 
                         Button(action: selectImageAndRunOCR) {
                             Image(systemName: "folder")
@@ -619,12 +619,11 @@ struct ContentView: View {
         window.setFrame(newFrame, display: true, animate: true)
     }
 
-    private func exportToHTML() {
-        // Show save panel first
+    private func exportToDocument() {
         let savePanel = NSSavePanel()
-        savePanel.allowedContentTypes = [UTType.html]
-        savePanel.nameFieldStringValue = (imageURL?.deletingPathExtension().lastPathComponent ?? "document") + ".html"
-        savePanel.title = String(localized: "ייצא ל-HTML")
+        savePanel.allowedContentTypes = [UTType(filenameExtension: "docx")!]
+        savePanel.nameFieldStringValue = (imageURL?.deletingPathExtension().lastPathComponent ?? "document") + ".docx"
+        savePanel.title = String(localized: "ייצא למסמך")
 
         guard savePanel.runModal() == .OK, let saveURL = savePanel.url else {
             return
@@ -635,11 +634,12 @@ struct ContentView: View {
 
         Task {
             do {
-                let html = try await generateHTMLForDocument()
-                try html.write(to: saveURL, atomically: true, encoding: .utf8)
-                print("✅ Exported HTML to \(saveURL.path)")
+                let pages = try await generateDocumentPages()
+                let title = imageURL?.deletingPathExtension().lastPathComponent ?? String(localized: "מסמך")
+                let docxData = try DOCXExporter.export(pages: pages, title: title)
+                try docxData.write(to: saveURL)
+                print("✅ Exported DOCX to \(saveURL.path)")
 
-                // Open the file in browser
                 NSWorkspace.shared.open(saveURL)
             } catch {
                 print("❌ Export failed: \(error.localizedDescription)")
@@ -652,11 +652,10 @@ struct ContentView: View {
         }
     }
 
-    private func generateHTMLForDocument() async throws -> String {
+    private func generateDocumentPages() async throws -> [(mainText: String, marginText: String, structure: PageStructure?)] {
         var pages: [(mainText: String, marginText: String, structure: PageStructure?)] = []
 
         if let pdfDoc = pdfDocument {
-            // Process all PDF pages
             let pageCount = pdfDoc.pageCount
             for pageIndex in 0..<pageCount {
                 await MainActor.run {
@@ -684,7 +683,6 @@ struct ContentView: View {
                 try? FileManager.default.removeItem(at: tempURL)
             }
         } else if let currentImage = image {
-            // Single image
             await MainActor.run {
                 exportProgress = 0.5
             }
@@ -704,8 +702,7 @@ struct ContentView: View {
             exportProgress = 1.0
         }
 
-        let cleanedPages = stripRepeatingParagraphs(pages)
-        return buildHTML(pages: cleanedPages)
+        return stripRepeatingParagraphs(pages)
     }
 
     private func extractTextFromBoxes(_ boxes: [OCRBox], structure: PageStructure? = nil) -> (main: String, margin: String) {
@@ -899,250 +896,6 @@ struct ContentView: View {
         return result
     }
 
-    private func buildHTML(pages: [(mainText: String, marginText: String, structure: PageStructure?)]) -> String {
-        let documentTitle = imageURL?.deletingPathExtension().lastPathComponent ?? String(localized: "מסמך")
-
-        var html = """
-        <!DOCTYPE html>
-        <html lang="he" dir="rtl">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>\(escapeHTML(documentTitle))</title>
-            <style>
-                * {
-                    box-sizing: border-box;
-                }
-                body {
-                    font-family: "David", "Times New Roman", serif;
-                    font-size: 16px;
-                    line-height: 1.8;
-                    margin: 0;
-                    padding: 20px;
-                    background: #f5f5f5;
-                    direction: rtl;
-                }
-                .container {
-                    max-width: 1000px;
-                    margin: 0 auto;
-                    background: white;
-                    padding: 40px;
-                    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-                }
-                h1 {
-                    text-align: center;
-                    border-bottom: 2px solid #333;
-                    padding-bottom: 20px;
-                    margin-bottom: 30px;
-                }
-                .page {
-                    margin-bottom: 40px;
-                    padding-bottom: 20px;
-                    border-bottom: 1px dashed #ccc;
-                }
-                .page:last-child {
-                    border-bottom: none;
-                }
-                .page-header {
-                    font-size: 14px;
-                    color: #666;
-                    margin-bottom: 15px;
-                }
-                .content-table {
-                    width: 100%;
-                    border-collapse: collapse;
-                }
-                .main-column {
-                    width: 75%;
-                    vertical-align: top;
-                    padding-left: 20px;
-                }
-                .margin-column {
-                    width: 25%;
-                    vertical-align: top;
-                    padding-right: 20px;
-                    border-right: 2px solid #ddd;
-                    font-size: 14px;
-                    color: #555;
-                }
-                .margin-text {
-                    white-space: pre-wrap;
-                    font-style: italic;
-                }
-                .margin-label {
-                    font-weight: bold;
-                    color: #888;
-                    font-size: 12px;
-                    margin-bottom: 8px;
-                }
-                .header-text {
-                    text-align: center;
-                    font-size: 14px;
-                    color: #666;
-                    padding-bottom: 8px;
-                    margin-bottom: 12px;
-                    border-bottom: 1px solid #ddd;
-                }
-                .footer-text {
-                    text-align: center;
-                    font-size: 14px;
-                    color: #666;
-                    padding-top: 8px;
-                    margin-top: 12px;
-                    border-top: 1px solid #ddd;
-                }
-                .section-heading {
-                    font-weight: bold;
-                    margin: 1em 0 0.5em 0;
-                }
-                .section-number {
-                    font-weight: bold;
-                }
-                .main-text {
-                    white-space: pre-wrap;
-                }
-                .placeholder {
-                    color: #999;
-                    font-style: italic;
-                }
-                @media print {
-                    body {
-                        background: white;
-                        padding: 0;
-                    }
-                    .container {
-                        box-shadow: none;
-                        padding: 20px;
-                    }
-                    .page {
-                        page-break-after: always;
-                    }
-                    .page:last-child {
-                        page-break-after: avoid;
-                    }
-                }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <h1>\(escapeHTML(documentTitle))</h1>
-
-        """
-
-        for (index, page) in pages.enumerated() {
-            let pageNumber = index + 1
-            let hasMargin = !page.marginText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-
-            html += """
-                        <div class="page">
-                            <div class="page-header">\(String(localized: "עמוד \(pageNumber)"))</div>
-
-            """
-
-            let mainContentHTML: String
-            if let structure = page.structure {
-                mainContentHTML = buildStructuredHTML(structure: structure, fallbackText: page.mainText)
-            } else {
-                mainContentHTML = "<div class=\"main-text\">\(escapeHTMLWithPlaceholders(page.mainText))</div>"
-            }
-
-            if hasMargin {
-                html += """
-                            <table class="content-table">
-                                <tr>
-                                    <td class="main-column">
-                                        \(mainContentHTML)
-                                    </td>
-                                    <td class="margin-column">
-                                        <div class="margin-label">\(String(localized: "הערות שוליים"))</div>
-                                        <div class="margin-text">\(escapeHTML(page.marginText))</div>
-                                    </td>
-                                </tr>
-                            </table>
-
-                """
-            } else {
-                html += """
-                            \(mainContentHTML)
-
-                """
-            }
-
-            html += """
-                        </div>
-
-            """
-        }
-
-        html += """
-            </div>
-        </body>
-        </html>
-        """
-
-        return html
-    }
-
-    private func buildStructuredHTML(structure: PageStructure, fallbackText: String) -> String {
-        // Build HTML from the plain-text paragraphs that were already assembled
-        // We split by \n\n to reconstruct paragraph boundaries
-        let textParagraphs = fallbackText.components(separatedBy: "\n\n")
-
-        // If structure paragraph count matches text paragraph count, pair them
-        guard structure.paragraphs.count == textParagraphs.count else {
-            // Mismatch - fall back to pre-wrap
-            return "<div class=\"main-text\">\(escapeHTMLWithPlaceholders(fallbackText))</div>"
-        }
-
-        var htmlParts: [String] = []
-        for (i, paragraph) in structure.paragraphs.enumerated() {
-            let text = textParagraphs[i].trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !text.isEmpty else { continue }
-
-            let escaped = escapeHTMLWithPlaceholders(text)
-
-            switch paragraph.role {
-            case .header:
-                htmlParts.append("<div class=\"header-text\">\(escaped)</div>")
-            case .footer:
-                htmlParts.append("<div class=\"footer-text\">\(escaped)</div>")
-            case .sectionHeading:
-                if let sectionNum = paragraph.sectionNumber {
-                    let escapedNum = escapeHTML(sectionNum)
-                    // Remove the section number from the start of text to wrap it separately
-                    let bodyText = text.hasPrefix(sectionNum)
-                        ? String(text.dropFirst(sectionNum.count)).trimmingCharacters(in: .whitespaces)
-                        : text
-                    let escapedBody = escapeHTMLWithPlaceholders(bodyText)
-                    htmlParts.append("<p class=\"section-heading\"><span class=\"section-number\">\(escapedNum)</span> \(escapedBody)</p>")
-                } else {
-                    htmlParts.append("<p class=\"section-heading\">\(escaped)</p>")
-                }
-            case .body:
-                htmlParts.append("<p>\(escaped)</p>")
-            }
-        }
-
-        return htmlParts.joined(separator: "\n")
-    }
-
-    private func escapeHTML(_ text: String) -> String {
-        return text
-            .replacingOccurrences(of: "&", with: "&amp;")
-            .replacingOccurrences(of: "<", with: "&lt;")
-            .replacingOccurrences(of: ">", with: "&gt;")
-            .replacingOccurrences(of: "\"", with: "&quot;")
-            .replacingOccurrences(of: "'", with: "&#39;")
-    }
-
-    /// Escape HTML and wrap `[...]` placeholders in styled spans.
-    private func escapeHTMLWithPlaceholders(_ text: String) -> String {
-        let escaped = escapeHTML(text)
-        return escaped.replacingOccurrences(
-            of: "[...]",
-            with: "<span class=\"placeholder\">[...]</span>"
-        )
-    }
 }
 
 #Preview {
