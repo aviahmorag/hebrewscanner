@@ -126,8 +126,9 @@ func classifyScript(_ text: String) -> ScriptClass {
     }
 
     // Section markers: (א), א., 1., (1), etc.
-    // Exclude pure Latin words (e.g. WIN, BIR, TERA) — those are OCR garbage, not markers.
-    if totalChars <= 5 && (hebrewCount > 0 || digitCount > 0 || punctCount > 0) {
+    // Require punctuation (parens/period) or very short (≤2 chars) — otherwise pure Hebrew
+    // words like מעמר (4 chars) get misclassified and skipped by the language model.
+    if totalChars <= 5 && (hebrewCount > 0 || digitCount > 0) && (punctCount > 0 || totalChars <= 2) {
         let range = NSRange(str.startIndex..., in: str)
         if sectionMarkerPattern.firstMatch(in: str, range: range) != nil {
             return .sectionMarker
@@ -160,6 +161,36 @@ func classifyScript(_ text: String) -> ScriptClass {
     return .punctuation
 }
 
+/// Fixes reversed parentheses from Tesseract's LTR visual-order digit output.
+/// e.g. `)3(` → `(3)`, `)א(` → `(א)`, `)3` → `(3)`
+func normalizeReversedParentheses(_ text: String) -> String {
+    let s = text.trimmingCharacters(in: .whitespaces)
+
+    // Full reversed: )…(  →  (…)
+    if s.hasPrefix(")") && s.hasSuffix("(") && s.count >= 3 {
+        let inner = s.dropFirst().dropLast()
+        let allDigitsOrHebrew = inner.allSatisfy { ch in
+            ch.isNumber || (ch.unicodeScalars.first.map { $0.value >= 0x05D0 && $0.value <= 0x05EA } ?? false)
+        }
+        if allDigitsOrHebrew {
+            return "(\(inner))"
+        }
+    }
+
+    // Half reversed: )…  →  (…)  (opening paren was split off by Tesseract)
+    if s.hasPrefix(")") && !s.hasSuffix("(") && s.count >= 2 {
+        let inner = s.dropFirst()
+        let allDigitsOrHebrew = inner.allSatisfy { ch in
+            ch.isNumber || (ch.unicodeScalars.first.map { $0.value >= 0x05D0 && $0.value <= 0x05EA } ?? false)
+        }
+        if allDigitsOrHebrew {
+            return "(\(inner))"
+        }
+    }
+
+    return text
+}
+
 /// What to do with a word during TSV parsing.
 private enum WordAction {
     case keep        // Accept as-is
@@ -176,7 +207,7 @@ func parseTesseractTSV(_ tsv: String, imageSize: CGSize) -> [OCRBox] {
         let parts = line.components(separatedBy: "\t")
 
         if parts.count >= 12 && parts[0] == "5" { // level 5 = word level
-            let text = parts[11].trimmingCharacters(in: .whitespaces)
+            let text = normalizeReversedParentheses(parts[11].trimmingCharacters(in: .whitespaces))
 
             if let blockNum = Int(parts[2]),
                let parNum = Int(parts[3]),

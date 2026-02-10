@@ -400,6 +400,8 @@ struct LanguageModelPostProcessorTests {
 
     @Test func skipsProcessingWhenModelNotReady() async {
         // Model won't be loaded in test environment — should return boxes unchanged
+        // This line has 2 Hebrew + 1 Latin, so Phase 4 threshold (≤1 Hebrew, ≥3 Latin)
+        // is NOT met — Latin word is preserved.
         let boxes = [
             OCRBox(text: "שלום", frame: .zero, lineId: 1001001, wordNum: 1),
             OCRBox(text: "FUSER", frame: .zero, lineId: 1001001, wordNum: 2),
@@ -408,7 +410,7 @@ struct LanguageModelPostProcessorTests {
 
         let result = await LanguageModelPostProcessor.process(boxes: boxes)
 
-        // Without model, boxes are returned unchanged
+        // Without model, boxes are returned unchanged (Phase 4 doesn't trigger here)
         #expect(result.count == 3)
         #expect(result[0].text == "שלום")
         #expect(result[1].text == "FUSER")  // Not replaced since model isn't available
@@ -425,5 +427,162 @@ struct LanguageModelPostProcessorTests {
 
         #expect(result[0].text == "[...]")
         #expect(result[0].isPlaceholder)
+    }
+}
+
+// MARK: - Reversed Parentheses Tests
+
+struct ReversedParenthesesTests {
+
+    @Test func fixesFullReversedDigit() {
+        #expect(normalizeReversedParentheses(")3(") == "(3)")
+        #expect(normalizeReversedParentheses(")12(") == "(12)")
+    }
+
+    @Test func fixesFullReversedHebrew() {
+        #expect(normalizeReversedParentheses(")א(") == "(א)")
+        #expect(normalizeReversedParentheses(")ב(") == "(ב)")
+    }
+
+    @Test func fixesHalfReversed() {
+        // Opening paren was split off by Tesseract
+        #expect(normalizeReversedParentheses(")3") == "(3)")
+        #expect(normalizeReversedParentheses(")א") == "(א)")
+    }
+
+    @Test func preservesCorrectParentheses() {
+        #expect(normalizeReversedParentheses("(3)") == "(3)")
+        #expect(normalizeReversedParentheses("(א)") == "(א)")
+    }
+
+    @Test func preservesNonParenText() {
+        #expect(normalizeReversedParentheses("שלום") == "שלום")
+        #expect(normalizeReversedParentheses("hello") == "hello")
+        #expect(normalizeReversedParentheses("123") == "123")
+    }
+
+    @Test func preservesSingleCloseParen() {
+        // Just a closing paren alone — no inner content
+        #expect(normalizeReversedParentheses(")") == ")")
+    }
+}
+
+// MARK: - Latin Garbage Cleanup Tests
+
+struct LatinGarbageCleanupTests {
+
+    @Test func cleansLineWithMostlyLatin() async {
+        // Line with 1 Hebrew + 4 Latin → Latin should become [...]
+        let boxes = [
+            OCRBox(text: "שלום", frame: .zero, lineId: 1001001, wordNum: 1),
+            OCRBox(text: "Zeer", frame: .zero, lineId: 1001001, wordNum: 2),
+            OCRBox(text: "sarees", frame: .zero, lineId: 1001001, wordNum: 3),
+            OCRBox(text: "ergo", frame: .zero, lineId: 1001001, wordNum: 4),
+            OCRBox(text: "loom", frame: .zero, lineId: 1001001, wordNum: 5),
+        ]
+
+        let result = await LanguageModelPostProcessor.process(boxes: boxes)
+
+        #expect(result[0].text == "שלום")  // Hebrew preserved
+        #expect(result[1].text == "[...]")  // Latin → placeholder
+        #expect(result[1].isPlaceholder)
+        #expect(result[2].text == "[...]")
+        #expect(result[3].text == "[...]")
+        #expect(result[4].text == "[...]")
+    }
+
+    @Test func preservesLatinWhenEnoughHebrew() async {
+        // Line with 3 Hebrew + 2 Latin → Latin preserved (not garbage)
+        let boxes = [
+            OCRBox(text: "שלום", frame: .zero, lineId: 1001001, wordNum: 1),
+            OCRBox(text: "עולם", frame: .zero, lineId: 1001001, wordNum: 2),
+            OCRBox(text: "טוב", frame: .zero, lineId: 1001001, wordNum: 3),
+            OCRBox(text: "PDF", frame: .zero, lineId: 1001001, wordNum: 4),
+            OCRBox(text: "HTML", frame: .zero, lineId: 1001001, wordNum: 5),
+        ]
+
+        let result = await LanguageModelPostProcessor.process(boxes: boxes)
+
+        // Latin words preserved because hebrewCount(3) > 1
+        #expect(result[3].text == "PDF")
+        #expect(result[4].text == "HTML")
+        #expect(!result[3].isPlaceholder)
+        #expect(!result[4].isPlaceholder)
+    }
+}
+
+// MARK: - Content-Based Footer Detection Tests
+
+struct ContentBasedFooterTests {
+
+    @Test func detectsLatinGarbageAtBottom() {
+        // Simulate a page with body text at top and Latin garbage at bottom
+        let boxes = [
+            // Body lines (Hebrew content)
+            makeBox(text: "שורה", lineId: 1001001, wordNum: 1, x: 100, y: 10, height: 20),
+            makeBox(text: "ראשונה", lineId: 1001001, wordNum: 2, x: 200, y: 10, height: 20),
+            makeBox(text: "שורה", lineId: 1001002, wordNum: 1, x: 100, y: 40, height: 20),
+            makeBox(text: "שנייה", lineId: 1001002, wordNum: 2, x: 200, y: 40, height: 20),
+            makeBox(text: "שורה", lineId: 1001003, wordNum: 1, x: 100, y: 70, height: 20),
+            makeBox(text: "שלישית", lineId: 1001003, wordNum: 2, x: 200, y: 70, height: 20),
+            // Bottom garbage lines (Latin-heavy, no Hebrew)
+            makeBox(text: "Certified", lineId: 1002001, wordNum: 1, x: 100, y: 500, height: 20),
+            makeBox(text: "Digital", lineId: 1002001, wordNum: 2, x: 200, y: 500, height: 20),
+            makeBox(text: "Signature", lineId: 1002001, wordNum: 3, x: 300, y: 500, height: 20),
+        ]
+
+        let structure = analyzePageStructure(boxes: boxes)
+
+        // The Latin garbage line at the bottom should be detected as footer
+        #expect(structure.footerLineIds.contains(1002001))
+    }
+
+    @Test func stopsAtRealContentLine() {
+        // Last line is Hebrew content — should NOT be marked as footer
+        let boxes = [
+            makeBox(text: "שורה", lineId: 1001001, wordNum: 1, x: 100, y: 10, height: 20),
+            makeBox(text: "ראשונה", lineId: 1001001, wordNum: 2, x: 200, y: 10, height: 20),
+            makeBox(text: "שורה", lineId: 1001002, wordNum: 1, x: 100, y: 40, height: 20),
+            makeBox(text: "שנייה", lineId: 1001002, wordNum: 2, x: 200, y: 40, height: 20),
+            makeBox(text: "שורה", lineId: 1001003, wordNum: 1, x: 100, y: 70, height: 20),
+            makeBox(text: "אחרונה", lineId: 1001003, wordNum: 2, x: 200, y: 70, height: 20),
+        ]
+
+        let structure = analyzePageStructure(boxes: boxes)
+
+        // No content-based footer should be detected — all lines are Hebrew
+        #expect(!structure.footerLineIds.contains(1001003))
+    }
+}
+
+// MARK: - Placeholder Collapsing Tests
+
+struct PlaceholderCollapsingTests {
+
+    @Test func collapsesConsecutivePlaceholders() {
+        let input = "[...] [...] [...]"
+        #expect(collapseConsecutivePlaceholders(input) == "[...]")
+    }
+
+    @Test func collapsesWithNewlines() {
+        let input = "[...]\n[...]"
+        #expect(collapseConsecutivePlaceholders(input) == "[...]")
+    }
+
+    @Test func preservesSinglePlaceholder() {
+        let input = "[...]"
+        #expect(collapseConsecutivePlaceholders(input) == "[...]")
+    }
+
+    @Test func preservesSeparatedPlaceholders() {
+        // Placeholders separated by real text should not collapse
+        let input = "[...] שלום [...]"
+        #expect(collapseConsecutivePlaceholders(input) == "[...] שלום [...]")
+    }
+
+    @Test func collapsesMultipleGroups() {
+        let input = "[...] [...] שלום [...] [...]"
+        let result = collapseConsecutivePlaceholders(input)
+        #expect(result == "[...] שלום [...]")
     }
 }

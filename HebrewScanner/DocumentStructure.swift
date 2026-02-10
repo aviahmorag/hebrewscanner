@@ -40,7 +40,10 @@ func analyzePageStructure(boxes: [OCRBox]) -> PageStructure {
     let medianGap = computeMedianInterLineGap(lineMetrics)
 
     // Step 3: Detect headers and footers
-    let (headerIds, footerIds) = detectHeaderFooter(lineMetrics: lineMetrics, medianGap: medianGap)
+    var (headerIds, footerIds) = detectHeaderFooter(lineMetrics: lineMetrics, medianGap: medianGap)
+
+    // Step 3b: Content-based footer detection (catches stamps/watermarks at bottom)
+    detectContentBasedFooter(boxes: nonMarginBoxes, lineMetrics: lineMetrics, existingFooterIds: &footerIds)
 
     // Step 4: Detect paragraph breaks among body lines
     let bodyMetrics = lineMetrics.filter { !headerIds.contains($0.lineId) && !footerIds.contains($0.lineId) }
@@ -291,4 +294,70 @@ private func assignRoles(
     }
 
     return result
+}
+
+// MARK: - Step 3b: Content-Based Footer Detection
+
+/// Scans bottom lines upward to detect non-content lines (stamps, watermarks, Latin garbage)
+/// and marks them as footer. Stops when it encounters a real content line.
+private func detectContentBasedFooter(
+    boxes: [OCRBox],
+    lineMetrics: [LineMetrics],
+    existingFooterIds: inout [Int]
+) {
+    let existingFooterSet = Set(existingFooterIds)
+    let maxScanLines = 8
+
+    // Group boxes by lineId for content analysis
+    var lineBoxes: [Int: [OCRBox]] = [:]
+    for box in boxes {
+        lineBoxes[box.lineId, default: []].append(box)
+    }
+
+    // Scan from bottom upward
+    let sortedMetrics = lineMetrics.sorted { $0.minY < $1.minY }
+    var scannedCount = 0
+
+    for metric in sortedMetrics.reversed() {
+        guard scannedCount < maxScanLines else { break }
+
+        // Skip lines already marked as footer by gap-based detection
+        if existingFooterSet.contains(metric.lineId) { continue }
+
+        scannedCount += 1
+
+        guard let words = lineBoxes[metric.lineId] else { continue }
+        let nonPlaceholderWords = words.filter { !$0.isPlaceholder }
+
+        var hebrewWordCount = 0
+        var latinWordCount = 0
+        let nonPlaceholderCount = nonPlaceholderWords.count
+
+        for word in nonPlaceholderWords {
+            let sc = classifyScript(word.text)
+            switch sc {
+            case .hebrew, .hebrewMixed:
+                hebrewWordCount += 1
+            case .latinOnly:
+                latinWordCount += 1
+            default:
+                break
+            }
+        }
+
+        // A line is "non-content" if:
+        // - (≤3 non-placeholder words AND 0 Hebrew words), OR
+        // - (≥3 Latin words AND ≤1 Hebrew word)
+        let isNonContent =
+            (nonPlaceholderCount <= 3 && hebrewWordCount == 0) ||
+            (latinWordCount >= 3 && hebrewWordCount <= 1)
+
+        if isNonContent {
+            existingFooterIds.append(metric.lineId)
+            print("🦶 Content-based footer: lineId=\(metric.lineId) (heb=\(hebrewWordCount), lat=\(latinWordCount), total=\(nonPlaceholderCount))")
+        } else {
+            // Hit a real content line — stop scanning
+            break
+        }
+    }
 }

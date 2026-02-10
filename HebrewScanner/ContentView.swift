@@ -9,6 +9,17 @@ import SwiftUI
 import UniformTypeIdentifiers
 import PDFKit
 
+/// Collapses consecutive `[...]` placeholders (separated by whitespace) into a single `[...]`.
+func collapseConsecutivePlaceholders(_ text: String) -> String {
+    guard let regex = try? NSRegularExpression(pattern: "\\[\\.\\.\\.\\](\\s+\\[\\.\\.\\.\\])+") else {
+        return text
+    }
+    return regex.stringByReplacingMatches(
+        in: text, range: NSRange(text.startIndex..., in: text),
+        withTemplate: "[...]"
+    )
+}
+
 struct ContentView: View {
     @State private var image: NSImage?
     @State private var imageURL: URL?
@@ -693,7 +704,8 @@ struct ContentView: View {
             exportProgress = 1.0
         }
 
-        return buildHTML(pages: pages)
+        let cleanedPages = stripRepeatingParagraphs(pages)
+        return buildHTML(pages: cleanedPages)
     }
 
     private func extractTextFromBoxes(_ boxes: [OCRBox], structure: PageStructure? = nil) -> (main: String, margin: String) {
@@ -781,7 +793,7 @@ struct ContentView: View {
             }
         }
 
-        return paragraphTexts.joined(separator: "\n\n")
+        return collapseConsecutivePlaceholders(paragraphTexts.joined(separator: "\n\n"))
     }
 
     private func buildStructuredText(boxes: [OCRBox], structure: PageStructure) -> String {
@@ -814,7 +826,77 @@ struct ContentView: View {
             }
         }
 
-        return parts.joined(separator: "\n\n")
+        return collapseConsecutivePlaceholders(parts.joined(separator: "\n\n"))
+    }
+
+    /// Extracts only Hebrew characters from a paragraph to create a normalized signature.
+    private func hebrewSignature(_ text: String) -> String {
+        let hebrewWords = text.split(separator: " ").filter { word in
+            word.unicodeScalars.contains { $0.value >= 0x0590 && $0.value <= 0x05FF }
+        }
+        return hebrewWords.joined(separator: " ")
+    }
+
+    /// Removes paragraphs that repeat on >50% of pages (watermarks, stamps).
+    /// Requires ≥3 pages to have enough data for detection.
+    private func stripRepeatingParagraphs(
+        _ pages: [(mainText: String, marginText: String, structure: PageStructure?)]
+    ) -> [(mainText: String, marginText: String, structure: PageStructure?)] {
+        guard pages.count >= 3 else { return pages }
+
+        // Split each page's main text into paragraphs and compute signatures
+        let pageParas: [[String]] = pages.map {
+            $0.mainText.components(separatedBy: "\n\n").filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        }
+
+        let pageSigs: [[String]] = pageParas.map { paras in
+            paras.map { hebrewSignature($0) }
+        }
+
+        // Count how many pages each signature appears on (deduplicated per page)
+        var sigPageCount: [String: Int] = [:]
+        for sigs in pageSigs {
+            let uniqueSigs = Set(sigs)
+            for sig in uniqueSigs {
+                sigPageCount[sig, default: 0] += 1
+            }
+        }
+
+        // Identify watermark signatures: >50% of pages AND ≥4 Hebrew characters
+        let threshold = pages.count / 2
+        let watermarkSigs = Set(sigPageCount.filter { sig, count in
+            count > threshold && sig.unicodeScalars.filter({ $0.value >= 0x0590 && $0.value <= 0x05FF }).count >= 4
+        }.keys)
+
+        guard !watermarkSigs.isEmpty else { return pages }
+        print("🔁 Detected \(watermarkSigs.count) repeating watermark paragraph(s)")
+
+        // Strip matching paragraphs from all pages
+        var result = pages
+        for (pageIdx, sigs) in pageSigs.enumerated() {
+            let parasToKeep = pageParas[pageIdx].enumerated().filter { idx, _ in
+                !watermarkSigs.contains(sigs[idx])
+            }
+
+            let newMainText = parasToKeep.map { $0.element }.joined(separator: "\n\n")
+            result[pageIdx] = (newMainText, result[pageIdx].marginText, result[pageIdx].structure)
+
+            // Update PageStructure paragraph indices to match remaining paragraphs
+            if let structure = result[pageIdx].structure {
+                let keptIndices = Set(parasToKeep.map { $0.offset })
+                let filteredParagraphs = structure.paragraphs.enumerated()
+                    .filter { keptIndices.contains($0.offset) }
+                    .map { $0.element }
+                let newStructure = PageStructure(
+                    paragraphs: filteredParagraphs,
+                    headerLineIds: structure.headerLineIds,
+                    footerLineIds: structure.footerLineIds
+                )
+                result[pageIdx] = (newMainText, result[pageIdx].marginText, newStructure)
+            }
+        }
+
+        return result
     }
 
     private func buildHTML(pages: [(mainText: String, marginText: String, structure: PageStructure?)]) -> String {
