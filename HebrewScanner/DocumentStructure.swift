@@ -21,7 +21,7 @@ struct LineMetrics {
     let parNum: Int         // Tesseract's paragraph number from lineId
 }
 
-func analyzePageStructure(boxes: [OCRBox]) -> PageStructure {
+nonisolated func analyzePageStructure(boxes: [OCRBox]) -> PageStructure {
     let nonMarginBoxes = boxes.filter { !$0.isMargin }
     guard !nonMarginBoxes.isEmpty else {
         return PageStructure(paragraphs: [], headerLineIds: [], footerLineIds: [])

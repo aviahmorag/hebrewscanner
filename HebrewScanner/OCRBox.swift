@@ -65,7 +65,7 @@ private let sectionMarkerPattern = try! NSRegularExpression(
     pattern: "^[\\(]?[\u{05D0}-\u{05EA}a-zA-Z0-9]+[\\)\\.]?$"
 )
 
-func classifyScript(_ text: String) -> ScriptClass {
+nonisolated func classifyScript(_ text: String) -> ScriptClass {
     // Strip bidi control characters for analysis
     let bidiChars = CharacterSet(charactersIn: "\u{200E}\u{200F}\u{202A}\u{202B}\u{202C}\u{202D}\u{202E}\u{2066}\u{2067}\u{2068}\u{2069}")
     let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -164,7 +164,7 @@ func classifyScript(_ text: String) -> ScriptClass {
 
 /// Fixes reversed parentheses from Tesseract's LTR visual-order digit output.
 /// e.g. `)3(` → `(3)`, `)א(` → `(א)`, `)3` → `(3)`
-func normalizeReversedParentheses(_ text: String) -> String {
+nonisolated func normalizeReversedParentheses(_ text: String) -> String {
     let s = text.trimmingCharacters(in: .whitespaces)
 
     // Full reversed: )…(  →  (…)
@@ -199,7 +199,7 @@ private enum WordAction {
     case drop        // Remove entirely
 }
 
-func parseTesseractTSV(_ tsv: String, imageSize: CGSize) -> [OCRBox] {
+nonisolated func parseTesseractTSV(_ tsv: String, imageSize: CGSize) -> [OCRBox] {
     var boxes: [OCRBox] = []
     let lines = tsv.components(separatedBy: .newlines).dropFirst() // drop header
 
@@ -281,7 +281,7 @@ func parseTesseractTSV(_ tsv: String, imageSize: CGSize) -> [OCRBox] {
 }
 
 /// Detects margin text by finding a gap in X-coordinates between main content and margin annotations
-private func detectMarginColumn(_ boxes: inout [OCRBox], imageWidth: CGFloat) {
+private nonisolated func detectMarginColumn(_ boxes: inout [OCRBox], imageWidth: CGFloat) {
     guard boxes.count > 10 else { return }
 
     // For Hebrew RTL: main text is on the RIGHT, margin annotations on the LEFT
