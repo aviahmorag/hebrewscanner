@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-Convert DictaBERT (dicta-il/dictabert) to Core ML with INT8 quantization.
+Convert DictaBERT (dicta-il/dictabert) to Core ML (Float16).
 
 Usage:
     pip install transformers torch coremltools
     python convert_dictabert_coreml.py
 
 Outputs:
-    ../Resources/DictaBERT_INT8.mlpackage   – quantized Core ML model
-    ../Resources/vocab.txt                   – WordPiece vocabulary
+    ../Resources/DictaBERT.mlpackage   – Float16 Core ML model
+    ../Resources/vocab.txt             – WordPiece vocabulary
 """
 
 import types
@@ -23,7 +23,7 @@ import coremltools as ct
 # ── Configuration ──────────────────────────────────────────────────
 MODEL_NAME = "dicta-il/dictabert"
 MAX_SEQ_LEN = 128       # Sufficient for single-line Hebrew OCR
-OUTPUT_DIR = Path(__file__).resolve().parent.parent / "Resources"
+OUTPUT_DIR = Path(__file__).resolve().parent.parent / "HebrewScanner" / "Resources"
 
 
 class MaskedLMWrapper(torch.nn.Module):
@@ -46,7 +46,8 @@ class MaskedLMWrapper(torch.nn.Module):
         # This replaces masking_utils which uses new_ones/bitwise_and/etc.
         # Shape: [batch, 1, 1, seq_len]  — 0.0 for attend, large negative for ignore
         extended_mask = attention_mask.unsqueeze(1).unsqueeze(2).to(torch.float32)
-        extended_mask = (1.0 - extended_mask) * (-3.4028e+38)
+        # Use -1e4 instead of -3.4e38: Float16 max is ~65504, so -3.4e38 overflows
+        extended_mask = (1.0 - extended_mask) * (-1e4)
 
         # Run BERT encoder directly, passing the pre-computed 4D mask
         embedding_output = self.bert.embeddings(
@@ -114,23 +115,17 @@ def main():
         minimum_deployment_target=ct.target.macOS14,
     )
 
-    # ── INT8 quantization ──────────────────────────────────────────
-    print("🔄 Applying INT8 quantization...")
-    mlmodel_int8 = ct.compression_utils.affine_quantize_weights(
-        mlmodel, mode="linear", dtype=np.int8
-    )
-
-    # ── Save ───────────────────────────────────────────────────────
-    mlpackage_path = OUTPUT_DIR / "DictaBERT_INT8.mlpackage"
+    # ── Save (Float16 — the default for mlprogram) ─────────────────
+    mlpackage_path = OUTPUT_DIR / "DictaBERT.mlpackage"
     if mlpackage_path.exists():
         shutil.rmtree(mlpackage_path)
-    mlmodel_int8.save(str(mlpackage_path))
+    mlmodel.save(str(mlpackage_path))
 
     size_mb = sum(
         f.stat().st_size for f in mlpackage_path.rglob("*") if f.is_file()
     ) / (1024 * 1024)
     print(f"✅ Saved Core ML model ({size_mb:.0f} MB) → {mlpackage_path}")
-    print("🎉 Done! Add DictaBERT_INT8.mlpackage and vocab.txt to the Xcode project.")
+    print("🎉 Done! Add DictaBERT.mlpackage and vocab.txt to the Xcode project.")
 
 
 if __name__ == "__main__":

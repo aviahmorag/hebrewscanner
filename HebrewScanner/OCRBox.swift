@@ -8,31 +8,31 @@
 import Foundation
 import SwiftUI
 
-struct OCRBox: Identifiable {
+struct OCRBox: Identifiable, Sendable {
     let id = UUID()
     var text: String
-    let frame: CGRect
+    var frame: CGRect
     let lineId: Int      // Unique line identifier (combines block, par, line)
     let wordNum: Int
     var isMargin: Bool = false       // True if this word is in the margin column
     var isPlaceholder: Bool = false  // True if this word was replaced with [...]
 }
 
-enum StructuralRole {
+enum StructuralRole: Sendable {
     case header
     case footer
     case body
     case sectionHeading
 }
 
-struct DetectedParagraph {
+struct DetectedParagraph: Sendable {
     let lineIds: [Int]
     let role: StructuralRole
     let sectionNumber: String?   // e.g. "א.", "1.", "(ב)"
     let isCentered: Bool
 }
 
-struct PageStructure {
+struct PageStructure: Sendable {
     let paragraphs: [DetectedParagraph]   // ordered top-to-bottom
     let headerLineIds: Set<Int>
     let footerLineIds: Set<Int>

@@ -86,12 +86,15 @@ final class WordPieceTokenizer: Sendable {
         var allTokenIds: [Int] = []
         var maskRanges: [Range<Int>] = []
 
+        var masked = false
         for word in words {
             let wordIds = tokenizeWord(word)
-            if word.lowercased() == wordToMask.lowercased() {
+            // Only mask the FIRST occurrence — masking all duplicates corrupts context
+            if !masked && word.lowercased() == wordToMask.lowercased() {
                 let start = allTokenIds.count
                 let end = start + wordIds.count
                 maskRanges.append(start..<end)
+                masked = true
             }
             allTokenIds.append(contentsOf: wordIds)
         }
@@ -129,6 +132,11 @@ final class WordPieceTokenizer: Sendable {
     /// Look up a token string by ID.
     nonisolated func token(for id: Int) -> String? {
         idToToken[id]
+    }
+
+    /// Check if a word exists as a single token in the vocabulary.
+    nonisolated func isInVocab(_ word: String) -> Bool {
+        vocab[word.lowercased()] != nil
     }
 
     /// Check if a token string contains Hebrew characters.

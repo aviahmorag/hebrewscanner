@@ -7,7 +7,6 @@
 
 import Foundation
 
-@MainActor
 func runTesseractOCR(imageURL: URL) async throws -> (text: String, tsv: String) {
     guard let tessdataURL = Bundle.main.resourceURL?.appendingPathComponent("tessdata") else {
         throw NSError(domain: "OCR", code: 2, userInfo: [NSLocalizedDescriptionKey: String(localized: "חסרת תיקיית tessdata")])

@@ -43,8 +43,8 @@ actor HebrewLanguageModel {
 
         do {
             // Find compiled model in bundle (Xcode compiles .mlpackage → .mlmodelc)
-            guard let modelURL = Bundle.main.url(forResource: "DictaBERT_INT8", withExtension: "mlmodelc")
-                    ?? Bundle.main.url(forResource: "DictaBERT_INT8", withExtension: "mlpackage") else {
+            guard let modelURL = Bundle.main.url(forResource: "DictaBERT", withExtension: "mlmodelc")
+                    ?? Bundle.main.url(forResource: "DictaBERT", withExtension: "mlpackage") else {
                 print("❌ Bundle contents: \(Bundle.main.bundleURL.path)")
                 throw ModelError.modelNotFound
             }
@@ -112,12 +112,20 @@ actor HebrewLanguageModel {
             let maskIdx = maskIndices[0]
             let vocabSize = logits.shape[2].intValue
 
-            // Extract logits for the masked position
+            // Extract logits for the masked position.
+            // The model may output Float16 or Float32 depending on compute precision.
             var rawLogits = [Float](repeating: 0, count: vocabSize)
-            let ptr = logits.dataPointer.assumingMemoryBound(to: Float.self)
             let offset = maskIdx * vocabSize
-            for i in 0..<vocabSize {
-                rawLogits[i] = ptr[offset + i]
+            if logits.dataType == .float16 {
+                let ptr = logits.dataPointer.assumingMemoryBound(to: Float16.self)
+                for i in 0..<vocabSize {
+                    rawLogits[i] = Float(ptr[offset + i])
+                }
+            } else {
+                let ptr = logits.dataPointer.assumingMemoryBound(to: Float.self)
+                for i in 0..<vocabSize {
+                    rawLogits[i] = ptr[offset + i]
+                }
             }
 
             // Softmax
@@ -151,6 +159,34 @@ actor HebrewLanguageModel {
         }
     }
 
+    // MARK: - Confusion-Based Correction
+
+    /// Try to correct a word using known OCR character confusion pairs.
+    /// Returns the correction if the original is NOT in the vocabulary and exactly one
+    /// single-character substitution produces a vocabulary word.
+    func correctByConfusion(_ word: String, pairs: [(Character, Character)]) -> String? {
+        guard let tokenizer = tokenizer else { return nil }
+        guard !tokenizer.isInVocab(word) else { return nil }
+
+        let chars = Array(word)
+        var candidates: Set<String> = []
+        for (i, ch) in chars.enumerated() {
+            for (a, b) in pairs {
+                var replacement: Character?
+                if ch == a { replacement = b }
+                else if ch == b { replacement = a }
+                guard let rep = replacement else { continue }
+                var newChars = chars
+                newChars[i] = rep
+                let candidate = String(newChars)
+                if tokenizer.isInVocab(candidate) {
+                    candidates.insert(candidate)
+                }
+            }
+        }
+        return candidates.count == 1 ? candidates.first : nil
+    }
+
     // MARK: - Helpers
 
     private func createMultiArray(from array: [Int32]) throws -> MLMultiArray {
@@ -169,7 +205,7 @@ actor HebrewLanguageModel {
 
         var errorDescription: String? {
             switch self {
-            case .modelNotFound: return "DictaBERT_INT8.mlmodelc not found in bundle"
+            case .modelNotFound: return "DictaBERT.mlmodelc not found in bundle"
             case .vocabNotFound: return "vocab.txt not found in bundle"
             case .vocabLoadFailed: return "Failed to parse vocab.txt"
             }

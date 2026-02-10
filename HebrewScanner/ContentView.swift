@@ -43,6 +43,7 @@ struct ContentView: View {
     @State private var lastMagnification: CGFloat = 1.0
     @State private var zoomAnchor: UnitPoint = .center
     private let minZoom: CGFloat = 0.1
+    private let ocrMinZoom: CGFloat = 2.0  // Minimum zoom for OCR (~288 DPI on Retina)
     private let maxZoom: CGFloat = 5.0
     private let zoomStep: CGFloat = 0.25
 
@@ -249,11 +250,18 @@ struct ContentView: View {
             // For PDFs, create a temp image file; for images, use the original URL
             let ocrURL: URL
             var tempURL: URL? = nil
+            var ocrImageSize = image.size
+            var coordScale: CGFloat = 1.0
 
-            if pdfDocument != nil {
-                // PDF: create temp PNG from current image
-                tempURL = createTempImageFile(from: image)
+            if let pdfDoc = pdfDocument,
+               let pdfPage = pdfDoc.page(at: currentPageIndex) {
+                // PDF: render high-res image for OCR
+                let ocrZoom = max(zoomLevel, ocrMinZoom)
+                let ocrImage = pdfPageToImage(pdfPage, zoomLevel: ocrZoom)
+                tempURL = createTempImageFile(from: ocrImage)
                 ocrURL = tempURL!
+                ocrImageSize = ocrImage.size
+                coordScale = zoomLevel / ocrZoom
             } else if let imageURL = imageURL {
                 // Regular image: use original URL
                 ocrURL = imageURL
@@ -263,7 +271,15 @@ struct ContentView: View {
 
             let (text, tsv) = try await runTesseractOCR(imageURL: ocrURL)
             self.ocrText = text
-            var boxes = parseTesseractTSV(tsv, imageSize: image.size)
+            var boxes = parseTesseractTSV(tsv, imageSize: ocrImageSize)
+            // Scale box coordinates from OCR space to display space
+            if coordScale != 1.0 {
+                for i in boxes.indices {
+                    let f = boxes[i].frame
+                    boxes[i].frame = CGRect(x: f.minX * coordScale, y: f.minY * coordScale,
+                                            width: f.width * coordScale, height: f.height * coordScale)
+                }
+            }
             boxes = await LanguageModelPostProcessor.process(boxes: boxes)
             self.ocrBoxes = boxes
             self.pageStructure = analyzePageStructure(boxes: self.ocrBoxes)
@@ -408,21 +424,39 @@ struct ContentView: View {
                 // Check if cancelled before starting
                 try Task.checkCancellation()
                 
-                // Create temporary image file for OCR
-                let tempURL = createTempImageFile(from: pageImage)
-                
+                // Render high-res image for OCR (min 2.0x for ~288 DPI on Retina)
+                let ocrZoom = max(self.zoomLevel, self.ocrMinZoom)
+                let ocrImage: NSImage
+                if ocrZoom == self.zoomLevel {
+                    ocrImage = pageImage
+                } else if let pdfPage = self.pdfDocument?.page(at: pageIndex) {
+                    ocrImage = self.pdfPageToImage(pdfPage, zoomLevel: ocrZoom)
+                } else {
+                    ocrImage = pageImage
+                }
+                let tempURL = createTempImageFile(from: ocrImage)
+
                 // Check if cancelled before OCR
                 try Task.checkCancellation()
-                
+
                 let (text, tsv) = try await runTesseractOCR(imageURL: tempURL)
-                
+
                 // Check if cancelled before updating UI
                 try Task.checkCancellation()
-                
+
                 // Only update if we're still on the same page and task wasn't cancelled
                 if self.currentPageIndex == pageIndex && !Task.isCancelled {
                     self.ocrText = text
-                    var boxes = parseTesseractTSV(tsv, imageSize: pageImage.size)
+                    var boxes = parseTesseractTSV(tsv, imageSize: ocrImage.size)
+                    // Scale box coordinates from OCR space to display space
+                    let coordScale = self.zoomLevel / ocrZoom
+                    if coordScale != 1.0 {
+                        for i in boxes.indices {
+                            let f = boxes[i].frame
+                            boxes[i].frame = CGRect(x: f.minX * coordScale, y: f.minY * coordScale,
+                                                    width: f.width * coordScale, height: f.height * coordScale)
+                        }
+                    }
                     boxes = await LanguageModelPostProcessor.process(boxes: boxes)
                     self.ocrBoxes = boxes
                     self.pageStructure = analyzePageStructure(boxes: self.ocrBoxes)
@@ -657,35 +691,89 @@ struct ContentView: View {
 
         if let pdfDoc = pdfDocument {
             let pageCount = pdfDoc.pageCount
+
+            // Phase 1: Pre-render all page images at 2.0x and create temp files (serial, main actor)
+            var pageInputs: [(index: Int, tempURL: URL, imageSize: CGSize)] = []
             for pageIndex in 0..<pageCount {
-                await MainActor.run {
-                    exportProgress = Double(pageIndex) / Double(pageCount)
-                }
-
+                exportProgress = Double(pageIndex) / Double(pageCount) * 0.1  // 0-10% for pre-render
                 guard let pdfPage = pdfDoc.page(at: pageIndex) else { continue }
-
-                let pageImage = pdfPageToImage(pdfPage, zoomLevel: 1.0)
+                let pageImage = pdfPageToImage(pdfPage, zoomLevel: ocrMinZoom)
                 let tempURL = createTempImageFile(from: pageImage)
+                pageInputs.append((pageIndex, tempURL, pageImage.size))
+            }
+            exportProgress = 0.1
 
-                do {
-                    let (_, tsv) = try await runTesseractOCR(imageURL: tempURL)
-                    var boxes = parseTesseractTSV(tsv, imageSize: pageImage.size)
-                    boxes = await LanguageModelPostProcessor.process(boxes: boxes)
-                    let structure = analyzePageStructure(boxes: boxes)
-                    let (main, margin) = extractTextFromBoxes(boxes, structure: structure)
-                    pages.append((main, margin, structure))
-                    print("📄 Exported page \(pageIndex + 1)/\(pageCount)")
-                } catch {
-                    print("⚠️ OCR failed for page \(pageIndex + 1): \(error)")
-                    pages.append(("", "", nil))
+            // Phase 2: OCR + LM processing (concurrent, up to 4 pages at a time)
+            struct PageOCRResult: Sendable {
+                let index: Int
+                let boxes: [OCRBox]
+                let structure: PageStructure?
+            }
+            var ocrResults = [(boxes: [OCRBox], structure: PageStructure?)](
+                repeating: ([], nil), count: pageCount
+            )
+            let maxConcurrent = 4
+            var completedCount = 0
+
+            await withTaskGroup(of: PageOCRResult.self) { group in
+                var nextIndex = 0
+
+                // Launch initial batch
+                for _ in 0..<min(maxConcurrent, pageInputs.count) {
+                    let input = pageInputs[nextIndex]
+                    nextIndex += 1
+                    group.addTask {
+                        do {
+                            let (_, tsv) = try await runTesseractOCR(imageURL: input.tempURL)
+                            var boxes = parseTesseractTSV(tsv, imageSize: input.imageSize)
+                            boxes = await LanguageModelPostProcessor.process(boxes: boxes)
+                            let structure = analyzePageStructure(boxes: boxes)
+                            return PageOCRResult(index: input.index, boxes: boxes, structure: structure)
+                        } catch {
+                            print("⚠️ OCR failed for page \(input.index + 1): \(error)")
+                            return PageOCRResult(index: input.index, boxes: [], structure: nil)
+                        }
+                    }
                 }
 
-                try? FileManager.default.removeItem(at: tempURL)
+                // Process completions and launch next pages
+                for await result in group {
+                    ocrResults[result.index] = (result.boxes, result.structure)
+                    completedCount += 1
+                    exportProgress = 0.1 + Double(completedCount) / Double(pageCount) * 0.85  // 10-95%
+                    print("📄 Exported page \(result.index + 1)/\(pageCount)")
+
+                    if nextIndex < pageInputs.count {
+                        let input = pageInputs[nextIndex]
+                        nextIndex += 1
+                        group.addTask {
+                            do {
+                                let (_, tsv) = try await runTesseractOCR(imageURL: input.tempURL)
+                                var boxes = parseTesseractTSV(tsv, imageSize: input.imageSize)
+                                boxes = await LanguageModelPostProcessor.process(boxes: boxes)
+                                let structure = analyzePageStructure(boxes: boxes)
+                                return PageOCRResult(index: input.index, boxes: boxes, structure: structure)
+                            } catch {
+                                print("⚠️ OCR failed for page \(input.index + 1): \(error)")
+                                return PageOCRResult(index: input.index, boxes: [], structure: nil)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Phase 3: Extract text (serial, fast)
+            for result in ocrResults {
+                let (main, margin) = extractTextFromBoxes(result.boxes, structure: result.structure)
+                pages.append((main, margin, result.structure))
+            }
+
+            // Cleanup temp files
+            for input in pageInputs {
+                try? FileManager.default.removeItem(at: input.tempURL)
             }
         } else if let currentImage = image {
-            await MainActor.run {
-                exportProgress = 0.5
-            }
+            exportProgress = 0.5
 
             let tempURL = createTempImageFile(from: currentImage)
             let (_, tsv) = try await runTesseractOCR(imageURL: tempURL)
@@ -698,9 +786,7 @@ struct ContentView: View {
             try? FileManager.default.removeItem(at: tempURL)
         }
 
-        await MainActor.run {
-            exportProgress = 1.0
-        }
+        exportProgress = 1.0
 
         return stripRepeatingParagraphs(pages)
     }
