@@ -38,7 +38,7 @@ struct PageStructure: Sendable {
     let footerLineIds: Set<Int>
 }
 
-enum ScriptClass: Equatable, CustomStringConvertible {
+nonisolated enum ScriptClass: Sendable, Equatable, CustomStringConvertible {
     case hebrew         // Contains Hebrew characters
     case hebrewMixed    // Hebrew + other scripts (common in OCR)
     case latinOnly      // Pure Latin letters only — likely garbage in Hebrew docs
@@ -61,7 +61,7 @@ enum ScriptClass: Equatable, CustomStringConvertible {
 }
 
 /// Section marker patterns for filtering (reused from DocumentStructure)
-private let sectionMarkerPattern = try! NSRegularExpression(
+private nonisolated let sectionMarkerPattern = try! NSRegularExpression(
     pattern: "^[\\(]?[\u{05D0}-\u{05EA}a-zA-Z0-9]+[\\)\\.]?$"
 )
 
@@ -193,7 +193,7 @@ nonisolated func normalizeReversedParentheses(_ text: String) -> String {
 }
 
 /// What to do with a word during TSV parsing.
-private enum WordAction {
+private nonisolated enum WordAction: Sendable {
     case keep        // Accept as-is
     case placeholder // Replace with [...]
     case drop        // Remove entirely

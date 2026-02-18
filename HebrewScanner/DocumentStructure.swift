@@ -66,7 +66,7 @@ nonisolated func analyzePageStructure(boxes: [OCRBox]) -> PageStructure {
 
 // MARK: - Step 1: Build Line Metrics
 
-private func buildLineMetrics(from boxes: [OCRBox]) -> [LineMetrics] {
+private nonisolated func buildLineMetrics(from boxes: [OCRBox]) -> [LineMetrics] {
     var lineGroups: [Int: [OCRBox]] = [:]
     for box in boxes {
         lineGroups[box.lineId, default: []].append(box)
@@ -104,7 +104,7 @@ private func buildLineMetrics(from boxes: [OCRBox]) -> [LineMetrics] {
 
 // MARK: - Step 2: Median Inter-Line Gap
 
-private func computeMedianInterLineGap(_ lineMetrics: [LineMetrics]) -> CGFloat {
+private nonisolated func computeMedianInterLineGap(_ lineMetrics: [LineMetrics]) -> CGFloat {
     guard lineMetrics.count >= 2 else { return 0 }
 
     var gaps: [CGFloat] = []
@@ -127,7 +127,7 @@ private func computeMedianInterLineGap(_ lineMetrics: [LineMetrics]) -> CGFloat 
 
 // MARK: - Step 3: Header/Footer Detection
 
-private func detectHeaderFooter(lineMetrics: [LineMetrics], medianGap: CGFloat) -> (headerIds: [Int], footerIds: [Int]) {
+private nonisolated func detectHeaderFooter(lineMetrics: [LineMetrics], medianGap: CGFloat) -> (headerIds: [Int], footerIds: [Int]) {
     let gapThreshold = medianGap * 3
     let maxHeaderFooterLines = 3
 
@@ -166,7 +166,7 @@ private func detectHeaderFooter(lineMetrics: [LineMetrics], medianGap: CGFloat) 
 
 // MARK: - Step 4: Paragraph Break Detection
 
-private func detectParagraphs(bodyMetrics: [LineMetrics], medianGap: CGFloat) -> [[Int]] {
+private nonisolated func detectParagraphs(bodyMetrics: [LineMetrics], medianGap: CGFloat) -> [[Int]] {
     guard !bodyMetrics.isEmpty else { return [] }
 
     // Compute reference line width: 80th percentile of body line widths
@@ -214,7 +214,7 @@ private func detectParagraphs(bodyMetrics: [LineMetrics], medianGap: CGFloat) ->
 // MARK: - Step 5: Section Numbering & Role Assignment
 
 /// Regex patterns for section numbering
-private let sectionPatterns: [NSRegularExpression] = {
+private nonisolated let sectionPatterns: [NSRegularExpression] = {
     let patterns = [
         // Hebrew letter + period: א. ב. etc.
         "^[\u{05D0}-\u{05EA}]\\.$",
@@ -233,7 +233,7 @@ private let sectionPatterns: [NSRegularExpression] = {
     return patterns.compactMap { try? NSRegularExpression(pattern: $0) }
 }()
 
-func detectSectionNumber(firstWord: String, secondWord: String?) -> String? {
+nonisolated func detectSectionNumber(firstWord: String, secondWord: String?) -> String? {
     let trimmed = firstWord.trimmingCharacters(in: .whitespaces)
 
     // Try matching first word alone
@@ -258,7 +258,7 @@ func detectSectionNumber(firstWord: String, secondWord: String?) -> String? {
     return nil
 }
 
-private func assignRoles(
+private nonisolated func assignRoles(
     bodyParagraphs: [[Int]],
     headerLineIds: [Int],
     footerLineIds: [Int],
@@ -316,7 +316,7 @@ private func assignRoles(
 /// Determines if all lines of a paragraph are centered on the page.
 /// A line is centered if it's shorter than 70% of the reference width AND
 /// its midpoint is within 5% of the page center.
-private func isCenteredParagraph(
+private nonisolated func isCenteredParagraph(
     lineIds: [Int],
     metricsLookup: [Int: LineMetrics],
     pageCenter: CGFloat,
@@ -339,7 +339,7 @@ private func isCenteredParagraph(
 
 /// Scans bottom lines upward to detect non-content lines (stamps, watermarks, Latin garbage)
 /// and marks them as footer. Stops when it encounters a real content line.
-private func detectContentBasedFooter(
+private nonisolated func detectContentBasedFooter(
     boxes: [OCRBox],
     lineMetrics: [LineMetrics],
     existingFooterIds: inout [Int]
