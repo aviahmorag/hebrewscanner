@@ -658,7 +658,7 @@ struct DOCXExporterTests {
 
         #expect(documentContent.contains("<w:b/>"))
         #expect(documentContent.contains("<w:bCs/>"))
-        #expect(documentContent.contains("Heading1"))
+        #expect(documentContent.contains("Heading2"))
     }
 
     @Test func xmlEscapesSpecialCharacters() {
@@ -765,5 +765,79 @@ struct CenteredLineDetectionTests {
         // But page center is at 350 (100 + 500/2), so it should NOT be centered
         let centeredParas = structure.paragraphs.filter { $0.isCentered }
         #expect(centeredParas.isEmpty)
+    }
+}
+
+// MARK: - HTML Exporter Tests
+
+struct HTMLExporterTests {
+
+    private func singlePage(_ text: String, structure: PageStructure? = nil) -> [(mainText: String, marginText: String, structure: PageStructure?)] {
+        [(mainText: text, marginText: "", structure: structure)]
+    }
+
+    @Test func generatesValidHTML() {
+        let html = HTMLExporter.export(pages: singlePage("שלום"), title: "בדיקה")
+        #expect(html.contains("<!DOCTYPE html>"))
+        #expect(html.contains("<html lang=\"he\" dir=\"rtl\">"))
+        #expect(html.contains("<meta charset=\"UTF-8\">"))
+        #expect(html.contains("</html>"))
+    }
+
+    @Test func hebrewTextAppearsInOutput() {
+        let html = HTMLExporter.export(pages: singlePage("הנה טקסט בעברית"), title: "מסמך")
+        #expect(html.contains("הנה טקסט בעברית"))
+    }
+
+    @Test func escapesHTMLEntities() {
+        #expect(HTMLExporter.escapeHTML("<script>") == "&lt;script&gt;")
+        #expect(HTMLExporter.escapeHTML("a & b") == "a &amp; b")
+        #expect(HTMLExporter.escapeHTML("\"quoted\"") == "&quot;quoted&quot;")
+        #expect(HTMLExporter.escapeHTML("it's") == "it&#39;s")
+    }
+
+    @Test func placeholderWrappedInSpan() {
+        let html = HTMLExporter.export(pages: singlePage("טקסט [...] עוד"), title: "מסמך")
+        #expect(html.contains("<span class=\"placeholder\">[...]</span>"))
+    }
+
+    @Test func structuredContentRendersRoles() {
+        let structure = PageStructure(
+            paragraphs: [
+                DetectedParagraph(lineIds: [1001001], role: .header, sectionNumber: nil, isCentered: true),
+                DetectedParagraph(lineIds: [1001002], role: .body, sectionNumber: nil, isCentered: false),
+                DetectedParagraph(lineIds: [1001003], role: .sectionHeading, sectionNumber: "א.", isCentered: false),
+                DetectedParagraph(lineIds: [1001004], role: .footer, sectionNumber: nil, isCentered: true),
+            ],
+            headerLineIds: [1001001],
+            footerLineIds: [1001004]
+        )
+        let text = "כותרת עליונה\n\nגוף הטקסט\n\nא. מבוא\n\nכותרת תחתונה"
+        let pages = [(mainText: text, marginText: "", structure: structure as PageStructure?)]
+        let html = HTMLExporter.export(pages: pages, title: "מסמך")
+
+        #expect(html.contains("<h1>"))
+        #expect(html.contains("<footer>"))
+        #expect(html.contains("<h2>"))
+    }
+
+    @Test func marginColumnRendered() {
+        let pages = [(mainText: "טקסט ראשי", marginText: "הערה בשוליים", structure: nil as PageStructure?)]
+        let html = HTMLExporter.export(pages: pages, title: "מסמך")
+
+        #expect(html.contains("class=\"margin-column\""))
+        #expect(html.contains("הערה בשוליים"))
+    }
+
+    @Test func titleEscaped() {
+        let html = HTMLExporter.export(pages: singlePage("טקסט"), title: "כותרת <מיוחדת>")
+        #expect(html.contains("&lt;מיוחדת&gt;"))
+        #expect(!html.contains("<מיוחדת>"))
+    }
+
+    @Test func printMediaQueryPresent() {
+        let html = HTMLExporter.export(pages: singlePage("טקסט"), title: "מסמך")
+        #expect(html.contains("@media print"))
+        #expect(html.contains("page-break-after"))
     }
 }

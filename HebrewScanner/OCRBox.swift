@@ -317,13 +317,24 @@ private nonisolated func detectMarginColumn(_ boxes: inout [OCRBox], imageWidth:
     }
 
     let gapPosition = (gapStart + gapEnd) / 2
-    let minGapThreshold = tsvWidth * 0.03  // At least 3% gap
+    let minGapThreshold = tsvWidth * 0.08  // At least 8% gap (avoids false positives from normal word spacing)
 
     print("📐 TSV width estimate: \(Int(tsvWidth)), searching for gap in X:\(Int(searchMin))-\(Int(searchMax))")
     print("📐 Found gap: \(Int(maxGap))px between X:\(Int(gapStart)) and X:\(Int(gapEnd))")
 
     if maxGap > minGapThreshold {
-        print("📐 Detected margin boundary at X:\(Int(gapPosition)) (gap: \(Int(maxGap))px)")
+        // Count how many words would be marked as margin
+        let candidateCount = boxes.filter { $0.frame.minX < gapPosition }.count
+        let marginRatio = Double(candidateCount) / Double(boxes.count)
+
+        // A real margin column is a small minority of the text (< 25%).
+        // If too many words fall in the "margin", it's just normal text with a gap.
+        if marginRatio > 0.25 {
+            print("📐 Rejected margin: \(Int(marginRatio * 100))% of words would be margin (too many)")
+            return
+        }
+
+        print("📐 Detected margin boundary at X:\(Int(gapPosition)) (gap: \(Int(maxGap))px, \(Int(marginRatio * 100))% of words)")
 
         // Mark boxes whose LEFT edge is to the left of the gap as margin text
         var marginCount = 0

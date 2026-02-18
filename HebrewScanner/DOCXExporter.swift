@@ -107,6 +107,21 @@ enum DOCXExporter {
             <w:basedOn w:val="Normal"/>
             <w:pPr>
               <w:bidi/>
+              <w:jc w:val="center"/>
+              <w:spacing w:before="240" w:after="200"/>
+            </w:pPr>
+            <w:rPr>
+              <w:b/>
+              <w:bCs/>
+              <w:sz w:val="36"/>
+              <w:szCs w:val="36"/>
+            </w:rPr>
+          </w:style>
+          <w:style w:type="paragraph" w:styleId="Heading2">
+            <w:name w:val="heading 2"/>
+            <w:basedOn w:val="Normal"/>
+            <w:pPr>
+              <w:bidi/>
               <w:spacing w:before="240" w:after="120"/>
             </w:pPr>
             <w:rPr>
@@ -116,54 +131,18 @@ enum DOCXExporter {
               <w:szCs w:val="28"/>
             </w:rPr>
           </w:style>
-          <w:style w:type="paragraph" w:styleId="Title">
-            <w:name w:val="Title"/>
-            <w:basedOn w:val="Normal"/>
-            <w:pPr>
-              <w:bidi/>
-              <w:jc w:val="center"/>
-              <w:spacing w:after="400"/>
-              <w:pBdr>
-                <w:bottom w:val="single" w:sz="8" w:space="4" w:color="333333"/>
-              </w:pBdr>
-            </w:pPr>
-            <w:rPr>
-              <w:b/>
-              <w:bCs/>
-              <w:sz w:val="36"/>
-              <w:szCs w:val="36"/>
-            </w:rPr>
-          </w:style>
-          <w:style w:type="paragraph" w:styleId="Header">
-            <w:name w:val="Header"/>
-            <w:basedOn w:val="Normal"/>
-            <w:pPr>
-              <w:bidi/>
-              <w:jc w:val="center"/>
-              <w:pBdr>
-                <w:bottom w:val="single" w:sz="4" w:space="2" w:color="DDDDDD"/>
-              </w:pBdr>
-            </w:pPr>
-            <w:rPr>
-              <w:color w:val="666666"/>
-              <w:sz w:val="22"/>
-              <w:szCs w:val="22"/>
-            </w:rPr>
-          </w:style>
           <w:style w:type="paragraph" w:styleId="Footer">
             <w:name w:val="Footer"/>
             <w:basedOn w:val="Normal"/>
             <w:pPr>
               <w:bidi/>
               <w:jc w:val="center"/>
-              <w:pBdr>
-                <w:top w:val="single" w:sz="4" w:space="2" w:color="DDDDDD"/>
-              </w:pBdr>
+              <w:spacing w:before="200"/>
             </w:pPr>
             <w:rPr>
-              <w:color w:val="666666"/>
-              <w:sz w:val="22"/>
-              <w:szCs w:val="22"/>
+              <w:color w:val="888888"/>
+              <w:sz w:val="20"/>
+              <w:szCs w:val="20"/>
             </w:rPr>
           </w:style>
         </w:styles>
@@ -175,9 +154,6 @@ enum DOCXExporter {
         title: String
     ) -> String {
         var body = ""
-
-        // Title paragraph
-        body += paragraphXML(text: title, style: "Title")
 
         // Render each page's content (flowing text, no page breaks)
         for page in pages {
@@ -214,7 +190,7 @@ enum DOCXExporter {
 
             switch paragraph.role {
             case .header:
-                xml += paragraphXML(text: text, style: "Header", centered: paragraph.isCentered)
+                xml += paragraphXML(text: text, style: "Heading1", centered: paragraph.isCentered)
             case .footer:
                 xml += paragraphXML(text: text, style: "Footer", centered: paragraph.isCentered)
             case .sectionHeading:
@@ -251,7 +227,7 @@ enum DOCXExporter {
     }
 
     private static func sectionHeadingXML(text: String, sectionNumber: String?, centered: Bool = false) -> String {
-        var pPr = "<w:pPr><w:pStyle w:val=\"Heading1\"/><w:bidi/>"
+        var pPr = "<w:pPr><w:pStyle w:val=\"Heading2\"/><w:bidi/>"
         if centered {
             pPr += "<w:jc w:val=\"center\"/>"
         }

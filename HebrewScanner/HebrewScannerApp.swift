@@ -16,9 +16,20 @@ struct HebrewScannerApp: App {
         }
     }
 
+    @FocusedValue(\.exportAction) var exportAction
+
     var body: some Scene {
         WindowGroup {
             ContentView()
+        }
+        .commands {
+            CommandGroup(after: .saveItem) {
+                Button("ייצא למסמך…") {
+                    exportAction?()
+                }
+                .keyboardShortcut("e", modifiers: .command)
+                .disabled(exportAction == nil)
+            }
         }
     }
 }

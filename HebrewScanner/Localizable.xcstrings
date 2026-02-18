@@ -27,6 +27,16 @@
         }
       }
     },
+    "בחר או גרור תמונה לסריקת טקסט עברי" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose or drag an image to scan Hebrew text"
+          }
+        }
+      }
+    },
     "בחר קובץ..." : {
       "localizations" : {
         "en" : {
@@ -47,18 +57,7 @@
         }
       }
     },
-    "בחר תמונה לסריקת טקסט עברי" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Choose an image to scan Hebrew text"
-          }
-        }
-      }
-    },
     "הערות שוליים" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -109,6 +108,16 @@
         }
       }
     },
+    "ייצא למסמך…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Export to Document…"
+          }
+        }
+      }
+    },
     "לא התקבל פלט TSV מ-Tesseract" : {
       "localizations" : {
         "en" : {
@@ -120,7 +129,14 @@
       }
     },
     "לא ניתן לקרוא את התמונה" : {
-
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cannot read image"
+          }
+        }
+      }
     },
     "מייצא... %lld%%" : {
       "localizations" : {
@@ -159,6 +175,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Page %1$lld of %2$lld"
+          }
+        }
+      }
+    },
+    "פורמט:" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Format:"
           }
         }
       }

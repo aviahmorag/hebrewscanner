@@ -8,6 +8,20 @@
 import SwiftUI
 import UniformTypeIdentifiers
 import PDFKit
+import AppKit
+
+// MARK: - Focused Value for Export Menu
+
+struct ExportActionKey: FocusedValueKey {
+    typealias Value = () -> Void
+}
+
+extension FocusedValues {
+    var exportAction: (() -> Void)? {
+        get { self[ExportActionKey.self] }
+        set { self[ExportActionKey.self] = newValue }
+    }
+}
 
 /// Collapses consecutive `[...]` placeholders (separated by whitespace) into a single `[...]`.
 func collapseConsecutivePlaceholders(_ text: String) -> String {
@@ -96,7 +110,7 @@ struct ContentView: View {
                     Image(systemName: "photo")
                         .font(.system(size: 60))
                         .foregroundColor(.secondary)
-                    Text("בחר תמונה לסריקת טקסט עברי")
+                    Text("בחר או גרור תמונה לסריקת טקסט עברי")
                         .font(.title2)
                         .foregroundColor(.secondary)
                     
@@ -217,6 +231,7 @@ struct ContentView: View {
             }
         }
         .frame(minWidth: 400, minHeight: 300)
+        .focusedValue(\.exportAction, (image != nil && !isLoading && !isExporting) ? { [self] in exportToDocument() } : nil)
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResizeNotification)) { _ in
             guard imageURL != nil else { return }
 
@@ -655,9 +670,42 @@ struct ContentView: View {
 
     private func exportToDocument() {
         let savePanel = NSSavePanel()
-        savePanel.allowedContentTypes = [UTType(filenameExtension: "docx")!]
-        savePanel.nameFieldStringValue = (imageURL?.deletingPathExtension().lastPathComponent ?? "document") + ".docx"
+        let baseName = imageURL?.deletingPathExtension().lastPathComponent ?? "document"
+        savePanel.nameFieldStringValue = baseName + ".docx"
         savePanel.title = String(localized: "ייצא למסמך")
+
+        // Format picker accessory view
+        let formats: [(label: String, ext: String, type: UTType)] = [
+            ("DOCX", "docx", UTType(filenameExtension: "docx")!),
+            ("HTML", "html", .html),
+            ("PDF", "pdf", .pdf),
+        ]
+        let popup = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 200, height: 28), pullsDown: false)
+        for fmt in formats {
+            popup.addItem(withTitle: fmt.label)
+        }
+        let accessory = NSView(frame: NSRect(x: 0, y: 0, width: 250, height: 36))
+        let label = NSTextField(labelWithString: String(localized: "פורמט:"))
+        label.frame = NSRect(x: 210, y: 6, width: 40, height: 20)
+        label.alignment = .right
+        popup.frame = NSRect(x: 0, y: 4, width: 200, height: 28)
+        accessory.addSubview(label)
+        accessory.addSubview(popup)
+        savePanel.accessoryView = accessory
+
+        // Update allowed type and extension when format changes
+        savePanel.allowedContentTypes = [formats[0].type]
+        let observer = FormatPopupObserver {
+            let idx = popup.indexOfSelectedItem
+            savePanel.allowedContentTypes = [formats[idx].type]
+            let currentName = savePanel.nameFieldStringValue
+            let stem = (currentName as NSString).deletingPathExtension
+            savePanel.nameFieldStringValue = stem + "." + formats[idx].ext
+        }
+        popup.target = observer
+        popup.action = #selector(FormatPopupObserver.formatChanged(_:))
+        // Keep observer alive during panel lifetime
+        objc_setAssociatedObject(savePanel, "formatObserver", observer, .OBJC_ASSOCIATION_RETAIN)
 
         guard savePanel.runModal() == .OK, let saveURL = savePanel.url else {
             return
@@ -670,11 +718,24 @@ struct ContentView: View {
             do {
                 let pages = try await generateDocumentPages()
                 let title = imageURL?.deletingPathExtension().lastPathComponent ?? String(localized: "מסמך")
-                let docxData = try DOCXExporter.export(pages: pages, title: title)
-                try docxData.write(to: saveURL)
-                print("✅ Exported DOCX to \(saveURL.path)")
+                let ext = saveURL.pathExtension.lowercased()
 
-                NSWorkspace.shared.open(saveURL)
+                if ext == "html" || ext == "htm" {
+                    let html = HTMLExporter.export(pages: pages, title: title)
+                    try html.write(to: saveURL, atomically: true, encoding: .utf8)
+                    print("✅ Exported HTML to \(saveURL.path)")
+                    NSWorkspace.shared.open(saveURL)
+                } else if ext == "pdf" {
+                    let html = HTMLExporter.export(pages: pages, title: title)
+                    try renderHTMLToPDF(html, to: saveURL)
+                    print("✅ Exported PDF to \(saveURL.path)")
+                    NSWorkspace.shared.open(saveURL)
+                } else {
+                    let docxData = try DOCXExporter.export(pages: pages, title: title)
+                    try docxData.write(to: saveURL)
+                    print("✅ Exported DOCX to \(saveURL.path)")
+                    NSWorkspace.shared.open(saveURL)
+                }
             } catch {
                 print("❌ Export failed: \(error.localizedDescription)")
             }
@@ -683,6 +744,48 @@ struct ContentView: View {
                 isExporting = false
                 exportProgress = 0
             }
+        }
+    }
+
+    /// Renders HTML to a paginated PDF using NSAttributedString + NSPrintOperation.
+    /// Produces selectable RTL text without requiring WKWebView (which crashes in sandbox).
+    @MainActor
+    private func renderHTMLToPDF(_ html: String, to url: URL) throws {
+        guard let htmlData = html.data(using: .utf8),
+              let attrString = NSAttributedString(html: htmlData, documentAttributes: nil) else {
+            throw NSError(domain: "Export", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: "Failed to parse HTML for PDF"])
+        }
+
+        // A4 page at 72 DPI
+        let pageWidth: CGFloat = 595
+        let pageHeight: CGFloat = 842
+        let margin: CGFloat = 50
+        let contentWidth = pageWidth - margin * 2
+
+        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: contentWidth, height: 0))
+        textView.isRichText = true
+        textView.textStorage?.setAttributedString(attrString)
+        textView.sizeToFit()
+
+        let printInfo = NSPrintInfo()
+        printInfo.paperSize = NSSize(width: pageWidth, height: pageHeight)
+        printInfo.topMargin = margin
+        printInfo.bottomMargin = margin
+        printInfo.leftMargin = margin
+        printInfo.rightMargin = margin
+        printInfo.horizontalPagination = .fit
+        printInfo.verticalPagination = .automatic
+        printInfo.jobDisposition = .save
+        printInfo.dictionary()[NSPrintInfo.AttributeKey.jobSavingURL] = url
+
+        let printOp = NSPrintOperation(view: textView, printInfo: printInfo)
+        printOp.showsPrintPanel = false
+        printOp.showsProgressPanel = false
+
+        if !printOp.run() {
+            throw NSError(domain: "Export", code: 2,
+                          userInfo: [NSLocalizedDescriptionKey: "PDF generation failed"])
         }
     }
 
@@ -899,14 +1002,7 @@ struct ContentView: View {
             let text = allWords.joined(separator: " ").trimmingCharacters(in: .whitespaces)
             guard !text.isEmpty else { continue }
 
-            switch paragraph.role {
-            case .header:
-                parts.append("[כותרת עליונה] " + text)
-            case .footer:
-                parts.append("[כותרת תחתונה] " + text)
-            case .sectionHeading, .body:
-                parts.append(text)
-            }
+            parts.append(text)
         }
 
         return collapseConsecutivePlaceholders(parts.joined(separator: "\n\n"))
@@ -982,6 +1078,19 @@ struct ContentView: View {
         return result
     }
 
+}
+
+/// Handles format popup changes in the save panel.
+private class FormatPopupObserver: NSObject {
+    private let onChange: () -> Void
+
+    init(onChange: @escaping () -> Void) {
+        self.onChange = onChange
+    }
+
+    @objc func formatChanged(_ sender: Any?) {
+        onChange()
+    }
 }
 
 #Preview {
