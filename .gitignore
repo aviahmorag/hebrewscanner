@@ -24,6 +24,7 @@ DerivedData/
 *.dmg
 *.zip
 *.app
+ios-build/
 
 # ML model (too large for git — distribute separately or use Git LFS)
 *.mlpackage

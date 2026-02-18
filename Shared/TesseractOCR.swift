@@ -8,12 +8,24 @@
 import Foundation
 
 func runTesseractOCR(imageURL: URL) async throws -> (text: String, tsv: String) {
-    guard let tessdataURL = Bundle.main.resourceURL?.appendingPathComponent("tessdata") else {
+    let fm = FileManager.default
+    let tessdataPath: String
+    if let resourceURL = Bundle.main.resourceURL {
+        // Check common bundle locations for tessdata
+        let candidates = ["tessdata", "Resources/tessdata"]
+        if let found = candidates.first(where: { candidate in
+            let url = resourceURL.appendingPathComponent(candidate)
+            return fm.fileExists(atPath: url.appendingPathComponent("heb.traineddata").path)
+        }) {
+            tessdataPath = resourceURL.appendingPathComponent(found).path
+        } else {
+            throw NSError(domain: "OCR", code: 2, userInfo: [NSLocalizedDescriptionKey: String(localized: "חסרת תיקיית tessdata")])
+        }
+    } else {
         throw NSError(domain: "OCR", code: 2, userInfo: [NSLocalizedDescriptionKey: String(localized: "חסרת תיקיית tessdata")])
     }
 
     let imagePath = imageURL.path
-    let tessdataPath = tessdataURL.path
 
     print("📥 OCR input image: \(imagePath)")
     print("📚 tessdata folder: \(tessdataPath)")

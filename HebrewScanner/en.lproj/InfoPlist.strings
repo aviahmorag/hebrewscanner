@@ -1,0 +1,5 @@
+/* English localization */
+"CFBundleDisplayName" = "Ayin";
+"NSHumanReadableCopyright" = "© 2026 Aviah Morag. All rights reserved.";
+"NSPhotoLibraryUsageDescription" = "Ayin needs access to the photo library to select images for Hebrew text scanning";
+"NSCameraUsageDescription" = "Ayin needs camera access to photograph documents for Hebrew text scanning";

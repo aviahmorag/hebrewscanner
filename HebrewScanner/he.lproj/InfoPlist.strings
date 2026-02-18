@@ -1,0 +1,5 @@
+/* Hebrew localization */
+"CFBundleDisplayName" = "עין";
+"NSHumanReadableCopyright" = "© 2026 אביה מורג. כל הזכויות שמורות.";
+"NSPhotoLibraryUsageDescription" = "עין צריכה גישה לספריית התמונות כדי לבחור תמונות לסריקת טקסט עברי";
+"NSCameraUsageDescription" = "עין צריכה גישה למצלמה כדי לצלם מסמכים לסריקת טקסט עברי";

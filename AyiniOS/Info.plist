@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>Ayin</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Ayin needs access to the photo library to select images for Hebrew text scanning</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Ayin needs camera access to photograph documents for Hebrew text scanning</string>
+</dict>
+</plist>
