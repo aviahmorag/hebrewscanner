@@ -217,12 +217,13 @@ class OverlayContainerView: UIView, UIEditMenuInteractionDelegate {
 
         let marginText = buildText(from: marginWords)
 
+        let marginLabel = String(localized: "שוליים")
         if marginText.isEmpty {
             return mainText
         } else if mainText.isEmpty {
-            return "[שוליים] " + marginText
+            return "[\(marginLabel)] " + marginText
         } else {
-            return mainText + "\n\n[שוליים]\n" + marginText
+            return mainText + "\n\n[\(marginLabel)]\n" + marginText
         }
     }
 

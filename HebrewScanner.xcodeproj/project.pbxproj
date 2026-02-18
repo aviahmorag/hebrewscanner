@@ -19,14 +19,14 @@
 			containerPortal = 21F72F352E36F02300B409E5 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = 21F72F3C2E36F02300B409E5;
-			remoteInfo = HebrewScanner;
+			remoteInfo = Ayin;
 		};
 		21F72F552E36F02400B409E5 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 21F72F352E36F02300B409E5 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = 21F72F3C2E36F02300B409E5;
-			remoteInfo = HebrewScanner;
+			remoteInfo = Ayin;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -35,8 +35,8 @@
 		21A46C9F2E37027E000183EB /* libleptonica.6.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = libleptonica.6.dylib; sourceTree = "<group>"; };
 		21A46CA02E37027E000183EB /* libtesseract.5.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = libtesseract.5.dylib; sourceTree = "<group>"; };
 		21F72F3D2E36F02300B409E5 /* Ayin.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Ayin.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		21F72F4A2E36F02400B409E5 /* HebrewScannerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HebrewScannerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		21F72F542E36F02400B409E5 /* HebrewScannerUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HebrewScannerUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		21F72F4A2E36F02400B409E5 /* AyinTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AyinTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		21F72F542E36F02400B409E5 /* AyinUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AyinUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		21IOS0012F3C0001000AYIN1 /* Ayin.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Ayin.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		21IOS0022F3C0002000AYIN2 /* TesseractIOS.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = TesseractIOS.xcframework; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -161,8 +161,8 @@
 			children = (
 				21F72F3D2E36F02300B409E5 /* Ayin.app */,
 				21IOS0012F3C0001000AYIN1 /* Ayin.app */,
-				21F72F4A2E36F02400B409E5 /* HebrewScannerTests.xctest */,
-				21F72F542E36F02400B409E5 /* HebrewScannerUITests.xctest */,
+				21F72F4A2E36F02400B409E5 /* AyinTests.xctest */,
+				21F72F542E36F02400B409E5 /* AyinUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -170,9 +170,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		21F72F3C2E36F02300B409E5 /* HebrewScanner */ = {
+		21F72F3C2E36F02300B409E5 /* Ayin */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 21F72F5E2E36F02400B409E5 /* Build configuration list for PBXNativeTarget "HebrewScanner" */;
+			buildConfigurationList = 21F72F5E2E36F02400B409E5 /* Build configuration list for PBXNativeTarget "Ayin" */;
 			buildPhases = (
 				21F72F392E36F02300B409E5 /* Sources */,
 				21F72F3A2E36F02300B409E5 /* Frameworks */,
@@ -187,17 +187,17 @@
 				21F72F3F2E36F02300B409E5 /* HebrewScanner */,
 				21SHARED02F3B0001000SHARE /* Shared */,
 			);
-			name = HebrewScanner;
+			name = Ayin;
 			packageProductDependencies = (
 				210DOCX022E3A0002000DOCX /* ZIPFoundation */,
 			);
-			productName = HebrewScanner;
+			productName = Ayin;
 			productReference = 21F72F3D2E36F02300B409E5 /* Ayin.app */;
 			productType = "com.apple.product-type.application";
 		};
-		21F72F492E36F02400B409E5 /* HebrewScannerTests */ = {
+		21F72F492E36F02400B409E5 /* AyinTests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 21F72F612E36F02400B409E5 /* Build configuration list for PBXNativeTarget "HebrewScannerTests" */;
+			buildConfigurationList = 21F72F612E36F02400B409E5 /* Build configuration list for PBXNativeTarget "AyinTests" */;
 			buildPhases = (
 				21F72F462E36F02400B409E5 /* Sources */,
 				21F72F472E36F02400B409E5 /* Frameworks */,
@@ -212,17 +212,17 @@
 				21F72F4D2E36F02400B409E5 /* HebrewScannerTests */,
 				21SHARED02F3B0001000SHARE /* Shared */,
 			);
-			name = HebrewScannerTests;
+			name = AyinTests;
 			packageProductDependencies = (
 				210DOCX032E3A0003000DOCX /* ZIPFoundation */,
 			);
-			productName = HebrewScannerTests;
-			productReference = 21F72F4A2E36F02400B409E5 /* HebrewScannerTests.xctest */;
+			productName = AyinTests;
+			productReference = 21F72F4A2E36F02400B409E5 /* AyinTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
-		21F72F532E36F02400B409E5 /* HebrewScannerUITests */ = {
+		21F72F532E36F02400B409E5 /* AyinUITests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 21F72F642E36F02400B409E5 /* Build configuration list for PBXNativeTarget "HebrewScannerUITests" */;
+			buildConfigurationList = 21F72F642E36F02400B409E5 /* Build configuration list for PBXNativeTarget "AyinUITests" */;
 			buildPhases = (
 				21F72F502E36F02400B409E5 /* Sources */,
 				21F72F512E36F02400B409E5 /* Frameworks */,
@@ -236,11 +236,11 @@
 			fileSystemSynchronizedGroups = (
 				21F72F572E36F02400B409E5 /* HebrewScannerUITests */,
 			);
-			name = HebrewScannerUITests;
+			name = AyinUITests;
 			packageProductDependencies = (
 			);
-			productName = HebrewScannerUITests;
-			productReference = 21F72F542E36F02400B409E5 /* HebrewScannerUITests.xctest */;
+			productName = AyinUITests;
+			productReference = 21F72F542E36F02400B409E5 /* AyinUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
 		21IOS0092F3C0009000AYIN9 /* Ayin iOS */ = {
@@ -313,10 +313,10 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				21F72F3C2E36F02300B409E5 /* HebrewScanner */,
+				21F72F3C2E36F02300B409E5 /* Ayin */,
 				21IOS0092F3C0009000AYIN9 /* Ayin iOS */,
-				21F72F492E36F02400B409E5 /* HebrewScannerTests */,
-				21F72F532E36F02400B409E5 /* HebrewScannerUITests */,
+				21F72F492E36F02400B409E5 /* AyinTests */,
+				21F72F532E36F02400B409E5 /* AyinUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -427,12 +427,12 @@
 /* Begin PBXTargetDependency section */
 		21F72F4C2E36F02400B409E5 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 21F72F3C2E36F02300B409E5 /* HebrewScanner */;
+			target = 21F72F3C2E36F02300B409E5 /* Ayin */;
 			targetProxy = 21F72F4B2E36F02400B409E5 /* PBXContainerItemProxy */;
 		};
 		21F72F562E36F02400B409E5 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 21F72F3C2E36F02300B409E5 /* HebrewScanner */;
+			target = 21F72F3C2E36F02300B409E5 /* Ayin */;
 			targetProxy = 21F72F552E36F02400B409E5 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
@@ -718,7 +718,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TEST_TARGET_NAME = HebrewScanner;
+				TEST_TARGET_NAME = Ayin;
 			};
 			name = Debug;
 		};
@@ -738,7 +738,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TEST_TARGET_NAME = HebrewScanner;
+				TEST_TARGET_NAME = Ayin;
 			};
 			name = Release;
 		};
@@ -840,7 +840,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		21F72F5E2E36F02400B409E5 /* Build configuration list for PBXNativeTarget "HebrewScanner" */ = {
+		21F72F5E2E36F02400B409E5 /* Build configuration list for PBXNativeTarget "Ayin" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				21F72F5F2E36F02400B409E5 /* Debug */,
@@ -849,7 +849,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		21F72F612E36F02400B409E5 /* Build configuration list for PBXNativeTarget "HebrewScannerTests" */ = {
+		21F72F612E36F02400B409E5 /* Build configuration list for PBXNativeTarget "AyinTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				21F72F622E36F02400B409E5 /* Debug */,
@@ -858,7 +858,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		21F72F642E36F02400B409E5 /* Build configuration list for PBXNativeTarget "HebrewScannerUITests" */ = {
+		21F72F642E36F02400B409E5 /* Build configuration list for PBXNativeTarget "AyinUITests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				21F72F652E36F02400B409E5 /* Debug */,

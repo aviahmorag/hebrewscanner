@@ -17,7 +17,7 @@
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "21F72F3C2E36F02300B409E5"
                BuildableName = "Ayin.app"
-               BlueprintName = "HebrewScanner"
+               BlueprintName = "Ayin"
                ReferencedContainer = "container:HebrewScanner.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
@@ -36,8 +36,8 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "21F72F492E36F02400B409E5"
-               BuildableName = "HebrewScannerTests.xctest"
-               BlueprintName = "HebrewScannerTests"
+               BuildableName = "AyinTests.xctest"
+               BlueprintName = "AyinTests"
                ReferencedContainer = "container:HebrewScanner.xcodeproj">
             </BuildableReference>
          </TestableReference>
@@ -47,8 +47,8 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "21F72F532E36F02400B409E5"
-               BuildableName = "HebrewScannerUITests.xctest"
-               BlueprintName = "HebrewScannerUITests"
+               BuildableName = "AyinUITests.xctest"
+               BlueprintName = "AyinUITests"
                ReferencedContainer = "container:HebrewScanner.xcodeproj">
             </BuildableReference>
          </TestableReference>
@@ -70,7 +70,7 @@
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "21F72F3C2E36F02300B409E5"
             BuildableName = "Ayin.app"
-            BlueprintName = "HebrewScanner"
+            BlueprintName = "Ayin"
             ReferencedContainer = "container:HebrewScanner.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
@@ -87,7 +87,7 @@
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "21F72F3C2E36F02300B409E5"
             BuildableName = "Ayin.app"
-            BlueprintName = "HebrewScanner"
+            BlueprintName = "Ayin"
             ReferencedContainer = "container:HebrewScanner.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>

@@ -42,6 +42,7 @@ struct ContentView_iOS: View {
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var showFileImporter = false
     @State private var showCamera = false
+    @State private var showGalleryPicker = false
 
     // Export
     @State private var exportedFileURL: URL?
@@ -96,7 +97,9 @@ struct ContentView_iOS: View {
                     }
 
                     Menu {
-                        PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+                        Button {
+                            showGalleryPicker = true
+                        } label: {
                             Label("בחר מהגלריה", systemImage: "photo")
                         }
                         Button {
@@ -110,7 +113,7 @@ struct ContentView_iOS: View {
                             Label("צלם תמונה", systemImage: "camera")
                         }
                     } label: {
-                        Image(systemName: "plus")
+                        Image(systemName: "doc.viewfinder")
                     }
                     .disabled(isLoading)
                 }
@@ -134,6 +137,7 @@ struct ContentView_iOS: View {
                     }
                 }
             }
+            .photosPicker(isPresented: $showGalleryPicker, selection: $selectedPhotoItem, matching: .images)
             .onChange(of: selectedPhotoItem) { _, newItem in
                 guard let newItem else { return }
                 loadFromPhotosPicker(newItem)
@@ -159,10 +163,12 @@ struct ContentView_iOS: View {
                     }
                 }
             }
-            .confirmationDialog("פורמט ייצוא", isPresented: $showExportFormatPicker) {
-                Button("DOCX") { exportToDocument(format: "docx") }
-                Button("HTML") { exportToDocument(format: "html") }
-                Button("ביטול", role: .cancel) {}
+            .sheet(isPresented: $showExportFormatPicker) {
+                ExportFormatSheet { format in
+                    showExportFormatPicker = false
+                    exportToDocument(format: format)
+                }
+                .presentationDetents([.height(280)])
             }
             .sheet(isPresented: $showExportSheet) {
                 if let url = exportedFileURL {
@@ -185,7 +191,9 @@ struct ContentView_iOS: View {
                 .multilineTextAlignment(.center)
 
             HStack(spacing: 16) {
-                PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+                Button {
+                    showGalleryPicker = true
+                } label: {
                     Label("גלריה", systemImage: "photo")
                 }
                 .buttonStyle(.borderedProminent)
@@ -266,7 +274,7 @@ struct ContentView_iOS: View {
             } catch {
                 if !Task.isCancelled {
                     print("❌ OCR error: \(error.localizedDescription)")
-                    self.ocrText = "שגיאה בהרצת OCR: \(error.localizedDescription)"
+                    self.ocrText = String(localized: "שגיאה בהרצת OCR: \(error.localizedDescription)")
                     self.ocrBoxes = []
                     self.pageStructure = nil
                 }
@@ -347,7 +355,7 @@ struct ContentView_iOS: View {
                 print("OCR task cancelled for page \(pageIndex + 1)")
             } catch {
                 if self.currentPageIndex == pageIndex && !Task.isCancelled {
-                    self.ocrText = "שגיאה בהרצת OCR: \(error.localizedDescription)"
+                    self.ocrText = String(localized: "שגיאה בהרצת OCR: \(error.localizedDescription)")
                     self.ocrBoxes = []
                     self.pageStructure = nil
                 }
@@ -376,6 +384,8 @@ struct ContentView_iOS: View {
             // Flip the context to match what PDF rendering expects.
             ctx.cgContext.translateBy(x: 0, y: scaledSize.height)
             ctx.cgContext.scaleBy(x: clampedZoom, y: -clampedZoom)
+            // Compensate for non-zero mediaBox origin (some PDFs offset content)
+            ctx.cgContext.translateBy(x: -pageRect.origin.x, y: -pageRect.origin.y)
             pdfPage.draw(with: .mediaBox, to: ctx.cgContext)
         }
     }
@@ -409,20 +419,26 @@ struct ContentView_iOS: View {
 
         Task {
             do {
-                let pages = try await generateDocumentPages()
                 let title = imageURL?.deletingPathExtension().lastPathComponent ?? "מסמך"
-
                 let tempDir = FileManager.default.temporaryDirectory
                 let exportURL: URL
 
-                if format == "html" {
-                    let html = HTMLExporter.export(pages: pages, title: title)
-                    exportURL = tempDir.appendingPathComponent("\(title).html")
-                    try html.write(to: exportURL, atomically: true, encoding: .utf8)
+                if format == "pdf" {
+                    exportURL = tempDir.appendingPathComponent("\(title).pdf")
+                    try exportToPDF(url: exportURL)
+                    exportProgress = 1.0
                 } else {
-                    let docxData = try DOCXExporter.export(pages: pages, title: title)
-                    exportURL = tempDir.appendingPathComponent("\(title).docx")
-                    try docxData.write(to: exportURL)
+                    let pages = try await generateDocumentPages()
+
+                    if format == "html" {
+                        let html = HTMLExporter.export(pages: pages, title: title)
+                        exportURL = tempDir.appendingPathComponent("\(title).html")
+                        try html.write(to: exportURL, atomically: true, encoding: .utf8)
+                    } else {
+                        let docxData = try DOCXExporter.export(pages: pages, title: title)
+                        exportURL = tempDir.appendingPathComponent("\(title).docx")
+                        try docxData.write(to: exportURL)
+                    }
                 }
 
                 await MainActor.run {
@@ -438,6 +454,27 @@ struct ContentView_iOS: View {
                 exportProgress = 0
             }
         }
+    }
+
+    private func exportToPDF(url: URL) throws {
+        // If the source is already a PDF, copy it directly
+        if let pdfDoc = pdfDocument, let data = pdfDoc.dataRepresentation() {
+            try data.write(to: url)
+            return
+        }
+
+        // For images, render as a single-page PDF
+        guard let currentImage = image else {
+            throw NSError(domain: "Export", code: 1, userInfo: [NSLocalizedDescriptionKey: "No image to export"])
+        }
+
+        let imageSize = currentImage.size
+        let pdfRenderer = UIGraphicsPDFRenderer(bounds: CGRect(origin: .zero, size: imageSize))
+        let data = pdfRenderer.pdfData { context in
+            context.beginPage()
+            currentImage.draw(in: CGRect(origin: .zero, size: imageSize))
+        }
+        try data.write(to: url)
     }
 
     private func generateDocumentPages() async throws -> [(mainText: String, marginText: String, structure: PageStructure?)] {
@@ -579,6 +616,42 @@ struct ContentView_iOS: View {
         }
 
         return collapseConsecutivePlaceholders(parts.joined(separator: "\n\n"))
+    }
+}
+
+// MARK: - Export Format Sheet
+
+struct ExportFormatSheet: View {
+    let onSelect: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Button {
+                    onSelect("pdf")
+                } label: {
+                    Label("PDF", systemImage: "doc.richtext")
+                }
+                Button {
+                    onSelect("docx")
+                } label: {
+                    Label("DOCX", systemImage: "doc.text")
+                }
+                Button {
+                    onSelect("html")
+                } label: {
+                    Label("HTML", systemImage: "globe")
+                }
+            }
+            .navigationTitle("שיתוף בפורמט")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("ביטול") { dismiss() }
+                }
+            }
+        }
     }
 }
 

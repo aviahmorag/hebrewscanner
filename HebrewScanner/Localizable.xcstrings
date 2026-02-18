@@ -28,10 +28,34 @@
       }
     },
     "DOCX" : {
-
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DOCX"
+          }
+        }
+      }
     },
     "HTML" : {
-
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HTML"
+          }
+        }
+      }
+    },
+    "PDF" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PDF"
+          }
+        }
+      }
     },
     "בחר או גרור תמונה לסריקת טקסט עברי" : {
       "localizations" : {
@@ -44,10 +68,24 @@
       }
     },
     "בחר או צלם תמונה לסריקת טקסט עברי" : {
-
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose or photograph an image to scan Hebrew text"
+          }
+        }
+      }
     },
     "בחר מהגלריה" : {
-
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose from Gallery"
+          }
+        }
+      }
     },
     "בחר קובץ..." : {
       "localizations" : {
@@ -70,10 +108,24 @@
       }
     },
     "ביטול" : {
-
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancel"
+          }
+        }
+      }
     },
     "גלריה" : {
-
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gallery"
+          }
+        }
+      }
     },
     "הערות שוליים" : {
       "localizations" : {
@@ -91,17 +143,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Copy"
-          }
-        }
-      }
-    },
-    "חסר קובץ tesseract" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Missing tesseract binary"
           }
         }
       }
@@ -177,18 +218,21 @@
       }
     },
     "מצלמה" : {
-
-    },
-    "עין" : {
-
-    },
-    "עמוד %lld" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Page %lld"
+            "value" : "Camera"
+          }
+        }
+      }
+    },
+    "עין" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ayin"
           }
         }
       }
@@ -203,9 +247,6 @@
         }
       }
     },
-    "פורמט ייצוא" : {
-
-    },
     "פורמט:" : {
       "localizations" : {
         "en" : {
@@ -217,10 +258,34 @@
       }
     },
     "צלם תמונה" : {
-
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Take Photo"
+          }
+        }
+      }
     },
     "קובץ" : {
-
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "File"
+          }
+        }
+      }
+    },
+    "שגיאה בהרצת OCR: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OCR error: %@"
+          }
+        }
+      }
     },
     "שוליים" : {
       "localizations" : {
@@ -228,6 +293,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Margins"
+          }
+        }
+      }
+    },
+    "שיתוף בפורמט" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Share as"
           }
         }
       }
