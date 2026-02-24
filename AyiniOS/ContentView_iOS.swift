@@ -10,6 +10,7 @@ import UniformTypeIdentifiers
 import PDFKit
 import PhotosUI
 import UIKit
+import CoreText
 
 /// Collapses consecutive `[...]` placeholders (separated by whitespace) into a single `[...]`.
 private func collapseConsecutivePlaceholders(_ text: String) -> String {
@@ -120,20 +121,27 @@ struct ContentView_iOS: View {
 
                 // PDF page navigation
                 if totalPages > 1 {
-                    ToolbarItemGroup(placement: .bottomBar) {
-                        Button(action: previousPage) {
-                            Image(systemName: "chevron.right")
-                        }
-                        .disabled(currentPageIndex <= 0)
+                    ToolbarItem(placement: .bottomBar) {
+                        HStack {
+                            Button(action: previousPage) {
+                                Image(systemName: "chevron.right")
+                            }
+                            .disabled(currentPageIndex <= 0)
 
-                        Text("עמוד \(currentPageIndex + 1) מתוך \(totalPages)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                            Spacer()
 
-                        Button(action: nextPage) {
-                            Image(systemName: "chevron.left")
+                            Text("עמוד \(currentPageIndex + 1) מתוך \(totalPages)")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                                .fixedSize()
+
+                            Spacer()
+
+                            Button(action: nextPage) {
+                                Image(systemName: "chevron.left")
+                            }
+                            .disabled(currentPageIndex >= totalPages - 1)
                         }
-                        .disabled(currentPageIndex >= totalPages - 1)
                     }
                 }
             }
@@ -423,22 +431,20 @@ struct ContentView_iOS: View {
                 let tempDir = FileManager.default.temporaryDirectory
                 let exportURL: URL
 
-                if format == "pdf" {
-                    exportURL = tempDir.appendingPathComponent("\(title).pdf")
-                    try exportToPDF(url: exportURL)
-                    exportProgress = 1.0
-                } else {
-                    let pages = try await generateDocumentPages()
+                let pages = try await generateDocumentPages()
 
-                    if format == "html" {
-                        let html = HTMLExporter.export(pages: pages, title: title)
-                        exportURL = tempDir.appendingPathComponent("\(title).html")
-                        try html.write(to: exportURL, atomically: true, encoding: .utf8)
-                    } else {
-                        let docxData = try DOCXExporter.export(pages: pages, title: title)
-                        exportURL = tempDir.appendingPathComponent("\(title).docx")
-                        try docxData.write(to: exportURL)
-                    }
+                if format == "pdf" {
+                    let html = HTMLExporter.export(pages: pages, title: title)
+                    exportURL = tempDir.appendingPathComponent("\(title).pdf")
+                    try await renderHTMLToPDF(html, to: exportURL)
+                } else if format == "html" {
+                    let html = HTMLExporter.export(pages: pages, title: title)
+                    exportURL = tempDir.appendingPathComponent("\(title).html")
+                    try html.write(to: exportURL, atomically: true, encoding: .utf8)
+                } else {
+                    let docxData = try DOCXExporter.export(pages: pages, title: title)
+                    exportURL = tempDir.appendingPathComponent("\(title).docx")
+                    try docxData.write(to: exportURL)
                 }
 
                 await MainActor.run {
@@ -456,24 +462,59 @@ struct ContentView_iOS: View {
         }
     }
 
-    private func exportToPDF(url: URL) throws {
-        // If the source is already a PDF, copy it directly
-        if let pdfDoc = pdfDocument, let data = pdfDoc.dataRepresentation() {
-            try data.write(to: url)
-            return
+    /// Renders HTML to a paginated PDF using NSAttributedString + Core Text.
+    private func renderHTMLToPDF(_ html: String, to url: URL) async throws {
+        // NSAttributedString HTML parsing requires main thread
+        let attrString: NSAttributedString = try await MainActor.run {
+            guard let htmlData = html.data(using: .utf8),
+                  let attrStr = try? NSAttributedString(
+                      data: htmlData,
+                      options: [.documentType: NSAttributedString.DocumentType.html,
+                                .characterEncoding: String.Encoding.utf8.rawValue],
+                      documentAttributes: nil) else {
+                throw NSError(domain: "Export", code: 1,
+                              userInfo: [NSLocalizedDescriptionKey: "Failed to parse HTML for PDF"])
+            }
+            return attrStr
         }
 
-        // For images, render as a single-page PDF
-        guard let currentImage = image else {
-            throw NSError(domain: "Export", code: 1, userInfo: [NSLocalizedDescriptionKey: "No image to export"])
+        // A4 page at 72 DPI
+        let pageWidth: CGFloat = 595
+        let pageHeight: CGFloat = 842
+        let margin: CGFloat = 50
+        let contentRect = CGRect(x: margin, y: margin,
+                                  width: pageWidth - margin * 2,
+                                  height: pageHeight - margin * 2)
+
+        let renderer = UIGraphicsPDFRenderer(
+            bounds: CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight))
+
+        let data = renderer.pdfData { context in
+            let framesetter = CTFramesetterCreateWithAttributedString(attrString as CFAttributedString)
+            var currentIndex = 0
+            let totalLength = attrString.length
+
+            while currentIndex < totalLength {
+                context.beginPage()
+
+                let path = CGPath(rect: contentRect, transform: nil)
+                let frame = CTFramesetterCreateFrame(
+                    framesetter, CFRange(location: currentIndex, length: 0), path, nil)
+
+                // Core Text uses bottom-left origin; flip for UIKit's top-left origin
+                let cgContext = context.cgContext
+                cgContext.saveGState()
+                cgContext.translateBy(x: 0, y: pageHeight)
+                cgContext.scaleBy(x: 1.0, y: -1.0)
+                CTFrameDraw(frame, cgContext)
+                cgContext.restoreGState()
+
+                let visibleRange = CTFrameGetVisibleStringRange(frame)
+                if visibleRange.length == 0 { break }
+                currentIndex += visibleRange.length
+            }
         }
 
-        let imageSize = currentImage.size
-        let pdfRenderer = UIGraphicsPDFRenderer(bounds: CGRect(origin: .zero, size: imageSize))
-        let data = pdfRenderer.pdfData { context in
-            context.beginPage()
-            currentImage.draw(in: CGRect(origin: .zero, size: imageSize))
-        }
         try data.write(to: url)
     }
 

@@ -86,11 +86,15 @@ class OverlayContainerView: UIView, UIEditMenuInteractionDelegate {
         let point = gesture.location(in: self)
 
         if let wordLabel = wordLabel(at: point) {
-            // Toggle selection
-            clearSelection()
-            wordLabel.isWordSelected = true
-            selectedWords = [wordLabel]
-            copyToPasteboard()
+            if wordLabel.isWordSelected {
+                // Tapped on already-selected text → show copy menu
+                showCopyMenu(at: point)
+            } else {
+                // Tapped on unselected word → select it
+                clearSelection()
+                wordLabel.isWordSelected = true
+                selectedWords = [wordLabel]
+            }
         } else {
             clearSelection()
         }
@@ -132,9 +136,6 @@ class OverlayContainerView: UIView, UIEditMenuInteractionDelegate {
 
         case .ended, .cancelled:
             isDragging = false
-            if !selectedWords.isEmpty {
-                copyToPasteboard()
-            }
 
         default:
             break
@@ -170,6 +171,7 @@ class OverlayContainerView: UIView, UIEditMenuInteractionDelegate {
     }
 
     private func showCopyMenu(at point: CGPoint) {
+        becomeFirstResponder()
         let config = UIEditMenuConfiguration(identifier: nil, sourcePoint: point)
         editMenuInteraction.presentEditMenu(with: config)
     }
@@ -191,7 +193,6 @@ class OverlayContainerView: UIView, UIEditMenuInteractionDelegate {
 
     func editMenuInteraction(_ interaction: UIEditMenuInteraction, menuFor configuration: UIEditMenuConfiguration, suggestedActions: [UIMenuElement]) -> UIMenu? {
         guard !selectedWords.isEmpty else { return nil }
-        becomeFirstResponder()
         return nil  // Return nil to use the standard system edit menu (Copy based on canPerformAction)
     }
 
@@ -286,6 +287,7 @@ class OverlayContainerView: UIView, UIEditMenuInteractionDelegate {
 /// when the scroll view actually has a valid frame from SwiftUI.
 class FittingScrollView: UIScrollView {
     var needsZoomToFit = false
+    var lastFitBounds: CGSize = .zero
 
     override func layoutSubviews() {
         super.layoutSubviews()
@@ -293,17 +295,24 @@ class FittingScrollView: UIScrollView {
               bounds.width > 0, bounds.height > 0,
               contentSize.width > 0, contentSize.height > 0 else { return }
 
-        let scaleW = bounds.width / contentSize.width
-        let scaleH = bounds.height / contentSize.height
+        // Re-fit when bounds change (e.g., toolbar appears/disappears)
+        let insets = adjustedContentInset
+        let availableWidth = bounds.width - insets.left - insets.right
+        let availableHeight = bounds.height - insets.top - insets.bottom
+        let effectiveSize = CGSize(width: availableWidth, height: availableHeight)
+        guard effectiveSize != lastFitBounds else { return }
+        lastFitBounds = effectiveSize
+
+        let scaleW = availableWidth / contentSize.width
+        let scaleH = availableHeight / contentSize.height
         let fitScale = min(scaleW, scaleH)
         minimumZoomScale = min(fitScale, 0.5)
         zoomScale = fitScale
-        needsZoomToFit = false
 
         // Center the content after zoom (scrollViewDidZoom may not fire for programmatic zoom)
         if let container = viewWithTag(100) {
-            let offsetX = max((bounds.width - container.frame.width) / 2, 0)
-            let offsetY = max((bounds.height - container.frame.height) / 2, 0)
+            let offsetX = max((availableWidth - container.frame.width) / 2 + insets.left, insets.left)
+            let offsetY = max((availableHeight - container.frame.height) / 2 + insets.top, insets.top)
             container.frame.origin = CGPoint(x: offsetX, y: offsetY)
         }
     }
@@ -324,6 +333,7 @@ struct SelectableOverlayImageView_iOS: UIViewRepresentable {
         scrollView.showsHorizontalScrollIndicator = false
         scrollView.showsVerticalScrollIndicator = false
         scrollView.bouncesZoom = true
+        scrollView.contentInsetAdjustmentBehavior = .always
 
         let container = OverlayContainerView()
         container.tag = 100
@@ -349,6 +359,7 @@ struct SelectableOverlayImageView_iOS: UIViewRepresentable {
 
         // Request zoom-to-fit on next layout pass (when bounds are valid)
         scrollView.needsZoomToFit = true
+        scrollView.lastFitBounds = .zero  // Reset so it re-fits for the new image
         scrollView.setNeedsLayout()
 
         // Remove old word labels
@@ -428,9 +439,11 @@ struct SelectableOverlayImageView_iOS: UIViewRepresentable {
 
         func centerContent(in scrollView: UIScrollView) {
             guard let container = scrollView.viewWithTag(100) else { return }
-            // container.frame already reflects the zoomed size
-            let offsetX = max((scrollView.bounds.width - container.frame.width) / 2, 0)
-            let offsetY = max((scrollView.bounds.height - container.frame.height) / 2, 0)
+            let insets = scrollView.adjustedContentInset
+            let availableWidth = scrollView.bounds.width - insets.left - insets.right
+            let availableHeight = scrollView.bounds.height - insets.top - insets.bottom
+            let offsetX = max((availableWidth - container.frame.width) / 2 + insets.left, insets.left)
+            let offsetY = max((availableHeight - container.frame.height) / 2 + insets.top, insets.top)
             container.frame.origin = CGPoint(x: offsetX, y: offsetY)
         }
     }
