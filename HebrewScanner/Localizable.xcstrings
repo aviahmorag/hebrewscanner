@@ -17,6 +17,17 @@
         }
       }
     },
+    "© 2026 אביה מורג. כל הזכויות שמורות." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "© 2026 Aviah Morag. All rights reserved."
+          }
+        }
+      }
+    },
     "⚠️ שגיאה בהרצת OCR: %@" : {
       "localizations" : {
         "en" : {
@@ -134,6 +145,17 @@
         }
       }
     },
+    "גרסה %@ (%@)" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Version %1$@ (%2$@)"
+          }
+        }
+      }
+    },
     "הערות שוליים" : {
       "localizations" : {
         "en" : {
@@ -235,6 +257,28 @@
         }
       }
     },
+    "סגור" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Close"
+          }
+        }
+      }
+    },
+    "סורק טקסט עברי" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hebrew OCR Scanner"
+          }
+        }
+      }
+    },
     "עין" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -284,6 +328,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "File"
+          }
+        }
+      }
+    },
+    "קוד פתוח" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Source"
           }
         }
       }

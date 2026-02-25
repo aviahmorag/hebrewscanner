@@ -7,8 +7,8 @@ HebrewScanner.xcodeproj
 HebrewScanner/          # macOS target source (ContentView.swift, HebrewScannerApp.swift)
 AyiniOS/                # iOS target source (ContentView_iOS.swift, HebrewScannerApp_iOS.swift)
 Shared/                 # Cross-platform code (OCR, language model, exporters, tokenizer)
+Shared/Resources/       # tessdata/ and DictaBERT.mlpackage/ and vocab.txt
 Frameworks/             # Pre-built native libs (dylibs for macOS, xcframework for iOS)
-Resources/              # tessdata/ and DictaBERT.mlpackage/
 scripts/                # build_dmg.sh, build_ios_libs.sh, convert_dictabert_coreml.py
 ```
 
@@ -53,7 +53,7 @@ xcodebuild -scheme "Ayin iOS" -destination 'generic/platform=iOS Simulator' buil
 
 - **ZIPFoundation** — via SPM (for DOCX export)
 - **Tesseract OCR** — embedded (dylibs on macOS, xcframework on iOS)
-- **DictaBERT** — pre-converted Core ML model in Resources/
+- **DictaBERT** — pre-converted Core ML model in Shared/Resources/
 
 ## Conventions
 

@@ -50,6 +50,9 @@ struct ContentView_iOS: View {
     @State private var showExportSheet = false
     @State private var showExportFormatPicker = false
 
+    // About
+    @State private var showAbout = false
+
     private let ocrMinZoom: CGFloat = 2.0  // Minimum zoom for OCR (~288 DPI on Retina)
 
     var body: some View {
@@ -89,6 +92,14 @@ struct ContentView_iOS: View {
             .navigationTitle("עין")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        showAbout = true
+                    } label: {
+                        Image(systemName: "info.circle")
+                    }
+                }
+
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     if image != nil {
                         Button(action: { showExportFormatPicker = true }) {
@@ -182,6 +193,10 @@ struct ContentView_iOS: View {
                 if let url = exportedFileURL {
                     ShareSheet(items: [url])
                 }
+            }
+            .sheet(isPresented: $showAbout) {
+                AboutSheet()
+                    .presentationDetents([.medium, .large])
             }
         }
     }
@@ -771,6 +786,110 @@ struct CameraView: UIViewControllerRepresentable {
         func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
             picker.dismiss(animated: true) { [self] in
                 onCapture(nil)
+            }
+        }
+    }
+}
+
+// MARK: - About Sheet
+
+struct AboutSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    private var appVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+    }
+
+    private var buildNumber: String {
+        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
+    }
+
+    private static let acknowledgements: [(name: String, copyright: String, license: String, url: String?)] = [
+        ("Tesseract OCR", "© 2006–2024 Google LLC", "Apache License 2.0", "https://github.com/tesseract-ocr/tesseract"),
+        ("DictaBERT", "© 2023 DICTA: The Israel Center for Text Analysis", "CC BY 4.0", "https://huggingface.co/dicta-il/dictabert"),
+        ("Leptonica", "© 2001–2024 Dan Bloomberg", "BSD 2-Clause License", "http://leptonica.org"),
+        ("libpng", "© 1995–2024 PNG Reference Library Authors", "libpng License", nil),
+        ("libjpeg", "© 1991–2024 Thomas G. Lane, Guido Vollbeding", "IJG License", nil),
+        ("libtiff", "© 1988–2024 Sam Leffler, Silicon Graphics, Inc.", "BSD-like License", nil),
+        ("libgif", "© 1997 Eric S. Raymond", "MIT License", nil),
+        ("libwebp", "© 2010–2024 Google LLC", "BSD 3-Clause License", nil),
+        ("OpenJPEG", "© 2002–2024 UCL", "BSD 2-Clause License", nil),
+        ("libarchive", "© 2003–2024 Tim Kientzle", "BSD License", nil),
+        ("Zstandard", "© 2016–2024 Facebook, Inc.", "BSD License", nil),
+        ("LZ4", "© 2011–2024 Yann Collet", "BSD 2-Clause License", nil),
+        ("XZ Utils (liblzma)", "", "Public Domain / BSD Zero Clause", nil),
+        ("ZIPFoundation", "© 2017–2024 Thomas Rasche", "MIT License", "https://github.com/weichsel/ZIPFoundation"),
+        ("BLAKE2 (libb2)", "© 2012–2024 Samuel Neves", "CC0 1.0 / Apache 2.0", nil),
+    ]
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 16) {
+                    Image("AboutIcon")
+                        .resizable()
+                        .frame(width: 120, height: 120)
+                        .clipShape(RoundedRectangle(cornerRadius: 26))
+                        .shadow(radius: 4, y: 2)
+
+                    Text("עין")
+                        .font(.largeTitle)
+                        .fontWeight(.bold)
+
+                    Text("סורק טקסט עברי")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+
+                    Text("גרסה \(appVersion) (\(buildNumber))")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+
+                    Link(destination: URL(string: "https://aviahmorag.com")!) {
+                        Text("aviahmorag.com")
+                            .font(.footnote)
+                    }
+
+                    Divider()
+                        .padding(.top, 8)
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("קוד פתוח")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity, alignment: .center)
+
+                        ForEach(Self.acknowledgements, id: \.name) { item in
+                            VStack(alignment: .leading, spacing: 2) {
+                                if let urlString = item.url, let url = URL(string: urlString) {
+                                    Link(item.name, destination: url)
+                                        .font(.subheadline.bold())
+                                } else {
+                                    Text(item.name)
+                                        .font(.subheadline.bold())
+                                }
+                                if !item.copyright.isEmpty {
+                                    Text(item.copyright)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Text(item.license)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .padding(.horizontal)
+
+                    Text("© 2026 אביה מורג. כל הזכויות שמורות.")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .padding(.vertical, 16)
+                }
+                .padding(.top, 24)
+            }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("סגור") { dismiss() }
+                }
             }
         }
     }
