@@ -322,8 +322,28 @@ struct ContentView_iOS: View {
         self.currentPageIndex = pageIndex
         self.ocrBoxes = []
         self.pageStructure = nil
-        isLoading = true
 
+        // Check for native text layer (born-digital PDF) before running OCR
+        if var pdfBoxes = extractBoxesFromPDFPage(pdfPage) {
+            // Scale from PDF points to the coordinate space the overlay expects.
+            // The overlay divides by image.scale (Retina factor), so pre-multiply to cancel.
+            let retinaScale = pageImage.scale
+            if retinaScale != 1.0 {
+                for i in pdfBoxes.indices {
+                    let f = pdfBoxes[i].frame
+                    pdfBoxes[i].frame = CGRect(x: f.minX * retinaScale, y: f.minY * retinaScale,
+                                                width: f.width * retinaScale, height: f.height * retinaScale)
+                }
+            }
+            self.ocrBoxes = pdfBoxes
+            self.pageStructure = analyzePageStructure(boxes: pdfBoxes)
+            self.ocrText = pdfPage.string ?? ""
+            isLoading = false
+            print("✅ Used native PDF text (\(pdfBoxes.count) boxes), skipped OCR")
+            return
+        }
+
+        isLoading = true
         ocrTask = Task {
             do {
                 try Task.checkCancellation()
@@ -427,7 +447,7 @@ struct ContentView_iOS: View {
 
         Task {
             do {
-                let title = imageURL?.deletingPathExtension().lastPathComponent ?? "מסמך"
+                let title = exportTitle()
                 let tempDir = FileManager.default.temporaryDirectory
                 let exportURL: URL
 
@@ -436,7 +456,7 @@ struct ContentView_iOS: View {
                 if format == "pdf" {
                     let html = HTMLExporter.export(pages: pages, title: title)
                     exportURL = tempDir.appendingPathComponent("\(title).pdf")
-                    try await renderHTMLToPDF(html, to: exportURL)
+                    try renderHTMLToPDF(html, to: exportURL)
                 } else if format == "html" {
                     let html = HTMLExporter.export(pages: pages, title: title)
                     exportURL = tempDir.appendingPathComponent("\(title).html")
@@ -463,19 +483,16 @@ struct ContentView_iOS: View {
     }
 
     /// Renders HTML to a paginated PDF using NSAttributedString + Core Text.
-    private func renderHTMLToPDF(_ html: String, to url: URL) async throws {
-        // NSAttributedString HTML parsing requires main thread
-        let attrString: NSAttributedString = try await MainActor.run {
-            guard let htmlData = html.data(using: .utf8),
-                  let attrStr = try? NSAttributedString(
-                      data: htmlData,
-                      options: [.documentType: NSAttributedString.DocumentType.html,
-                                .characterEncoding: String.Encoding.utf8.rawValue],
-                      documentAttributes: nil) else {
-                throw NSError(domain: "Export", code: 1,
-                              userInfo: [NSLocalizedDescriptionKey: "Failed to parse HTML for PDF"])
-            }
-            return attrStr
+    @MainActor
+    private func renderHTMLToPDF(_ html: String, to url: URL) throws {
+        guard let htmlData = html.data(using: .utf8),
+              let attrString = try? NSAttributedString(
+                  data: htmlData,
+                  options: [.documentType: NSAttributedString.DocumentType.html,
+                            .characterEncoding: String.Encoding.utf8.rawValue],
+                  documentAttributes: nil) else {
+            throw NSError(domain: "Export", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: "Failed to parse HTML for PDF"])
         }
 
         // A4 page at 72 DPI
@@ -528,6 +545,16 @@ struct ContentView_iOS: View {
                 exportProgress = Double(pageIndex) / Double(pageCount) * 0.9
 
                 guard let pdfPage = pdfDoc.page(at: pageIndex) else { continue }
+
+                // Try native text first (born-digital PDF)
+                if let nativeBoxes = extractBoxesFromPDFPage(pdfPage) {
+                    let structure = analyzePageStructure(boxes: nativeBoxes)
+                    let (main, margin) = extractTextFromBoxes(nativeBoxes, structure: structure)
+                    pages.append((main, margin, structure))
+                    print("📄 Export page \(pageIndex + 1): native text (\(nativeBoxes.count) boxes)")
+                    continue
+                }
+
                 let ocrImage = pdfPageToImage(pdfPage, zoomLevel: ocrMinZoom)
                 let tempURL = createTempImageFile(from: ocrImage)
 
@@ -556,6 +583,19 @@ struct ContentView_iOS: View {
 
         exportProgress = 1.0
         return pages
+    }
+
+    private func exportTitle() -> String {
+        let words = ocrText
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .prefix(3)
+        if words.isEmpty {
+            return "Document"
+        }
+        let joined = words.joined(separator: " ")
+        let sanitized = joined.replacingOccurrences(of: "[/\\\\:*?\"<>|]", with: "", options: .regularExpression)
+        return sanitized.isEmpty ? "Document" : sanitized
     }
 
     // MARK: - Text Extraction (shared logic)

@@ -283,37 +283,66 @@ class OverlayContainerView: UIView, UIEditMenuInteractionDelegate {
 
 // MARK: - Zoom-to-fit scroll view
 
-/// UIScrollView subclass that applies zoom-to-fit during layoutSubviews,
-/// when the scroll view actually has a valid frame from SwiftUI.
+/// UIScrollView subclass that applies zoom-to-fit when a new image is loaded.
+/// Uses the container's unzoomed bounds (not contentSize, which changes with zoom)
+/// and defers the fit to after SwiftUI has finalized layout.
 class FittingScrollView: UIScrollView {
-    var needsZoomToFit = false
-    var lastFitBounds: CGSize = .zero
+    /// The unzoomed (scale=1) size of the content. Set explicitly when the image changes,
+    /// because UIScrollView.contentSize shifts with zoomScale.
+    var originalContentSize: CGSize = .zero
 
-    override func layoutSubviews() {
-        super.layoutSubviews()
+    /// When true, the next layoutSubviews applies zoom-to-fit and clears the flag.
+    var needsZoomToFit = false
+
+    /// Tracks the available size we last fitted to, so rotation triggers a re-fit.
+    private var lastFitAvailableSize: CGSize = .zero
+
+    /// Resets fit state for a new image. Call before scheduling a new zoom-to-fit.
+    func resetFitState() {
+        needsZoomToFit = true
+        lastFitAvailableSize = .zero
+    }
+
+    func applyZoomToFit() {
         guard needsZoomToFit,
               bounds.width > 0, bounds.height > 0,
-              contentSize.width > 0, contentSize.height > 0 else { return }
+              originalContentSize.width > 0, originalContentSize.height > 0 else { return }
 
-        // Re-fit when bounds change (e.g., toolbar appears/disappears)
         let insets = adjustedContentInset
         let availableWidth = bounds.width - insets.left - insets.right
         let availableHeight = bounds.height - insets.top - insets.bottom
-        let effectiveSize = CGSize(width: availableWidth, height: availableHeight)
-        guard effectiveSize != lastFitBounds else { return }
-        lastFitBounds = effectiveSize
+        guard availableWidth > 0, availableHeight > 0 else { return }
 
-        let scaleW = availableWidth / contentSize.width
-        let scaleH = availableHeight / contentSize.height
+        let availableSize = CGSize(width: availableWidth, height: availableHeight)
+        guard availableSize != lastFitAvailableSize else { return }
+        lastFitAvailableSize = availableSize
+
+        let scaleW = availableWidth / originalContentSize.width
+        let scaleH = availableHeight / originalContentSize.height
         let fitScale = min(scaleW, scaleH)
-        minimumZoomScale = min(fitScale, 0.5)
-        zoomScale = fitScale
 
-        // Center the content after zoom (scrollViewDidZoom may not fire for programmatic zoom)
-        if let container = viewWithTag(100) {
-            let offsetX = max((availableWidth - container.frame.width) / 2 + insets.left, insets.left)
-            let offsetY = max((availableHeight - container.frame.height) / 2 + insets.top, insets.top)
-            container.frame.origin = CGPoint(x: offsetX, y: offsetY)
+        minimumZoomScale = min(fitScale, 0.5)
+        maximumZoomScale = max(5.0, fitScale * 3)
+        setZoomScale(fitScale, animated: false)
+        needsZoomToFit = false
+
+        centerContent()
+    }
+
+    func centerContent() {
+        guard let container = viewWithTag(100) else { return }
+        let insets = adjustedContentInset
+        let availableWidth = bounds.width - insets.left - insets.right
+        let availableHeight = bounds.height - insets.top - insets.bottom
+        let offsetX = max((availableWidth - container.frame.width) / 2 + insets.left, insets.left)
+        let offsetY = max((availableHeight - container.frame.height) / 2 + insets.top, insets.top)
+        container.frame.origin = CGPoint(x: offsetX, y: offsetY)
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        if needsZoomToFit {
+            applyZoomToFit()
         }
     }
 }
@@ -339,7 +368,7 @@ struct SelectableOverlayImageView_iOS: UIViewRepresentable {
         container.tag = 100
         scrollView.addSubview(container)
 
-        let imageView = UIImageView(image: image)
+        let imageView = UIImageView()
         imageView.contentMode = .scaleAspectFit
         imageView.tag = 200
         container.addSubview(imageView)
@@ -351,22 +380,50 @@ struct SelectableOverlayImageView_iOS: UIViewRepresentable {
         guard let container = scrollView.viewWithTag(100) as? OverlayContainerView,
               let imageView = container.viewWithTag(200) as? UIImageView else { return }
 
-        imageView.image = image
         let imageSize = image.size
-        imageView.frame = CGRect(origin: .zero, size: imageSize)
-        container.frame = CGRect(origin: .zero, size: imageSize)
-        scrollView.contentSize = imageSize
+        let imageChanged = imageView.image !== image
 
-        // Request zoom-to-fit on next layout pass (when bounds are valid)
-        scrollView.needsZoomToFit = true
-        scrollView.lastFitBounds = .zero  // Reset so it re-fits for the new image
-        scrollView.setNeedsLayout()
+        if imageChanged {
+            // Reset to clean state before reconfiguring — old zoomScale would
+            // distort contentSize and break the fit calculation.
+            scrollView.zoomScale = 1.0
+
+            imageView.image = image
+            imageView.frame = CGRect(origin: .zero, size: imageSize)
+            container.frame = CGRect(origin: .zero, size: imageSize)
+            scrollView.contentSize = imageSize
+            scrollView.originalContentSize = imageSize
+
+            // Schedule zoom-to-fit. Reset lastFitAvailableSize so the fit
+            // recalculates even if the screen size hasn't changed. Use async
+            // to ensure SwiftUI has finished laying out the scroll view's bounds
+            // (they may still be zero when updateUIView runs for a newly inserted view).
+            scrollView.resetFitState()
+            scrollView.setNeedsLayout()
+            DispatchQueue.main.async {
+                if scrollView.needsZoomToFit {
+                    scrollView.applyZoomToFit()
+                }
+            }
+        }
+
+        // Only rebuild word labels if boxes actually changed
+        let boxCount = boxes.count
+        let currentLabelCount = container.wordLabels.count
+        let boxesChanged = imageChanged || boxCount != currentLabelCount
+
+        guard boxesChanged else {
+            container.pageStructure = pageStructure
+            return
+        }
 
         // Remove old word labels
         container.wordLabels.forEach { $0.removeFromSuperview() }
         container.wordLabels.removeAll()
         container.selectedWords.removeAll()
         container.pageStructure = pageStructure
+
+        guard !boxes.isEmpty else { return }
 
         // Position word labels
         // On iOS, UIImage.size is in points (= pixels for scale=1 images from UIImage(data:))
@@ -434,17 +491,9 @@ struct SelectableOverlayImageView_iOS: UIViewRepresentable {
         }
 
         func scrollViewDidZoom(_ scrollView: UIScrollView) {
-            centerContent(in: scrollView)
-        }
-
-        func centerContent(in scrollView: UIScrollView) {
-            guard let container = scrollView.viewWithTag(100) else { return }
-            let insets = scrollView.adjustedContentInset
-            let availableWidth = scrollView.bounds.width - insets.left - insets.right
-            let availableHeight = scrollView.bounds.height - insets.top - insets.bottom
-            let offsetX = max((availableWidth - container.frame.width) / 2 + insets.left, insets.left)
-            let offsetY = max((availableHeight - container.frame.height) / 2 + insets.top, insets.top)
-            container.frame.origin = CGPoint(x: offsetX, y: offsetY)
+            if let fittingScrollView = scrollView as? FittingScrollView {
+                fittingScrollView.centerContent()
+            }
         }
     }
 }

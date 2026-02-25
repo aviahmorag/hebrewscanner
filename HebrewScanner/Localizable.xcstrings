@@ -28,6 +28,7 @@
       }
     },
     "DOCX" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -38,6 +39,7 @@
       }
     },
     "HTML" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -48,6 +50,7 @@
       }
     },
     "PDF" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -68,6 +71,7 @@
       }
     },
     "בחר או צלם תמונה לסריקת טקסט עברי" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -78,6 +82,7 @@
       }
     },
     "בחר מהגלריה" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -108,6 +113,7 @@
       }
     },
     "ביטול" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -118,6 +124,7 @@
       }
     },
     "גלריה" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -218,6 +225,7 @@
       }
     },
     "מצלמה" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -228,6 +236,7 @@
       }
     },
     "עין" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -258,6 +267,7 @@
       }
     },
     "צלם תמונה" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -268,6 +278,7 @@
       }
     },
     "קובץ" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -278,6 +289,7 @@
       }
     },
     "שגיאה בהרצת OCR: %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -298,6 +310,7 @@
       }
     },
     "שיתוף בפורמט" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {

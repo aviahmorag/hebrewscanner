@@ -7,6 +7,7 @@
 
 import Foundation
 import SwiftUI
+import PDFKit
 
 struct OCRBox: Identifiable, Sendable {
     let id = UUID()
@@ -281,7 +282,7 @@ nonisolated func parseTesseractTSV(_ tsv: String, imageSize: CGSize) -> [OCRBox]
 }
 
 /// Detects margin text by finding a gap in X-coordinates between main content and margin annotations
-private nonisolated func detectMarginColumn(_ boxes: inout [OCRBox], imageWidth: CGFloat) {
+nonisolated func detectMarginColumn(_ boxes: inout [OCRBox], imageWidth: CGFloat) {
     guard boxes.count > 10 else { return }
 
     // For Hebrew RTL: main text is on the RIGHT, margin annotations on the LEFT
@@ -352,4 +353,217 @@ private nonisolated func detectMarginColumn(_ boxes: inout [OCRBox], imageWidth:
     } else {
         print("📐 No significant margin column detected in expected region")
     }
+}
+
+/// Returns true if the PDF page contains a large raster image (i.e. it's a scanned page).
+/// Scanned pages should always use Tesseract OCR, even if they have an embedded text layer.
+private nonisolated func pdfPageIsScanned(_ pdfPage: PDFPage) -> Bool {
+    guard let cgPage = pdfPage.pageRef,
+          let pageDict = cgPage.dictionary else { return false }
+
+    var resourcesDict: CGPDFDictionaryRef?
+    guard CGPDFDictionaryGetDictionary(pageDict, "Resources", &resourcesDict),
+          let resources = resourcesDict else { return false }
+
+    var xobjectDict: CGPDFDictionaryRef?
+    guard CGPDFDictionaryGetDictionary(resources, "XObject", &xobjectDict),
+          let xobjects = xobjectDict else { return false }
+
+    let pageSize = pdfPage.bounds(for: .mediaBox).size
+
+    // Check if any XObject is an image larger than the page (indicating a scan).
+    // Pass pageSize via info pointer since CGPDFDictionaryApplyBlock uses a C block.
+    struct ScanCheckContext {
+        var hasLargeImage: Bool
+        let pageWidth: Int
+        let pageHeight: Int
+    }
+    var ctx = ScanCheckContext(hasLargeImage: false,
+                               pageWidth: Int(pageSize.width),
+                               pageHeight: Int(pageSize.height))
+    withUnsafeMutablePointer(to: &ctx) { ctxPtr in
+        CGPDFDictionaryApplyBlock(xobjects, { _, value, info in
+            var stream: CGPDFStreamRef?
+            guard CGPDFObjectGetValue(value, .stream, &stream),
+                  let stream = stream,
+                  let dict = CGPDFStreamGetDictionary(stream) else { return true }
+
+            var subtype: UnsafePointer<CChar>?
+            guard CGPDFDictionaryGetName(dict, "Subtype", &subtype),
+                  let subtype = subtype,
+                  String(cString: subtype) == "Image" else { return true }
+
+            var width: CGPDFInteger = 0
+            var height: CGPDFInteger = 0
+            CGPDFDictionaryGetInteger(dict, "Width", &width)
+            CGPDFDictionaryGetInteger(dict, "Height", &height)
+
+            // A scanned page image at any reasonable DPI (>=100) will have pixel
+            // dimensions larger than the page point dimensions (72 DPI).
+            // E.g. A4 at 72pt = 595x842, but a scan at 150 DPI = 1240x1754 pixels.
+            let context = info!.assumingMemoryBound(to: ScanCheckContext.self)
+            if width > context.pointee.pageWidth && height > context.pointee.pageHeight {
+                context.pointee.hasLargeImage = true
+                return false // stop iterating
+            }
+            return true // continue
+        }, ctxPtr)
+    }
+
+    return ctx.hasLargeImage
+}
+
+/// Extracts OCRBox array from a PDF page's native text layer (for born-digital PDFs).
+/// Returns nil if the page has no meaningful native text (caller should fall back to OCR).
+nonisolated func extractBoxesFromPDFPage(_ pdfPage: PDFPage) -> [OCRBox]? {
+    // If the page contains a large raster image, it's a scan — use OCR instead
+    if pdfPageIsScanned(pdfPage) {
+        print("📄 PDF page contains scan image, falling back to OCR")
+        return nil
+    }
+
+    guard let fullString = pdfPage.string else { return nil }
+
+    // Count Hebrew/Latin characters to decide if there's meaningful text
+    let meaningfulCount = fullString.unicodeScalars.filter { scalar in
+        let v = scalar.value
+        return (v >= 0x0590 && v <= 0x05FF) ||  // Hebrew
+               (v >= 0x0041 && v <= 0x005A) ||  // Latin uppercase
+               (v >= 0x0061 && v <= 0x007A)     // Latin lowercase
+    }.count
+    guard meaningfulCount >= 20 else { return nil }
+
+    let charCount = pdfPage.numberOfCharacters
+    guard charCount > 0 else { return nil }
+
+    let mediaBox = pdfPage.bounds(for: .mediaBox)
+
+    // Collect per-character info: character + bounds
+    struct CharInfo {
+        let char: Character
+        let bounds: CGRect
+    }
+
+    var charInfos: [CharInfo] = []
+    // Map from PDFKit character index to string index
+    var stringIndex = fullString.startIndex
+    for i in 0..<charCount {
+        let bounds = pdfPage.characterBounds(at: i)
+        // Get the character from the string at corresponding position
+        if stringIndex < fullString.endIndex {
+            let ch = fullString[stringIndex]
+            charInfos.append(CharInfo(char: ch, bounds: bounds))
+            stringIndex = fullString.index(after: stringIndex)
+        }
+    }
+
+    // Group characters into words (split on whitespace/newlines)
+    struct WordInfo {
+        var text: String
+        var unionBounds: CGRect
+    }
+
+    var words: [WordInfo] = []
+    var currentWord = ""
+    var currentBounds: CGRect = .null
+
+    for info in charInfos {
+        if info.char.isWhitespace || info.char.isNewline {
+            if !currentWord.isEmpty && !currentBounds.isNull {
+                words.append(WordInfo(text: currentWord, unionBounds: currentBounds))
+            }
+            currentWord = ""
+            currentBounds = .null
+        } else {
+            currentWord.append(info.char)
+            if info.bounds.width > 0 && info.bounds.height > 0 {
+                if currentBounds.isNull {
+                    currentBounds = info.bounds
+                } else {
+                    currentBounds = currentBounds.union(info.bounds)
+                }
+            }
+        }
+    }
+    // Flush last word
+    if !currentWord.isEmpty && !currentBounds.isNull {
+        words.append(WordInfo(text: currentWord, unionBounds: currentBounds))
+    }
+
+    guard !words.isEmpty else { return nil }
+
+    // Convert PDF coordinates (bottom-left origin) to image coordinates (top-left origin)
+    // imageX = pdfX - mediaBox.origin.x
+    // imageY = mediaBox.maxY - pdfY - pdfH
+    var convertedWords: [(text: String, frame: CGRect)] = []
+    for word in words {
+        let pdfRect = word.unionBounds
+        let imageX = pdfRect.minX - mediaBox.origin.x
+        let imageY = mediaBox.maxY - pdfRect.maxY  // flip Y: top-left origin
+        let imageW = pdfRect.width
+        let imageH = pdfRect.height
+        let frame = CGRect(x: imageX, y: imageY, width: imageW, height: imageH)
+        convertedWords.append((word.text, frame))
+    }
+
+    // Cluster words into lines by Y-midpoint proximity
+    // Compute median character height for threshold
+    let heights = convertedWords.map { $0.frame.height }.sorted()
+    let medianHeight: CGFloat
+    if heights.isEmpty {
+        return nil
+    } else if heights.count % 2 == 0 {
+        medianHeight = (heights[heights.count / 2 - 1] + heights[heights.count / 2]) / 2
+    } else {
+        medianHeight = heights[heights.count / 2]
+    }
+    let lineThreshold = medianHeight * 0.5  // Words within 50% of median height are same line
+
+    // Sort by Y midpoint, then cluster
+    let sortedByY = convertedWords.enumerated().sorted { $0.element.frame.midY < $1.element.frame.midY }
+
+    var lineAssignments = [Int](repeating: 0, count: convertedWords.count)
+    var currentLineId = 0
+    var currentLineY = sortedByY.first?.element.frame.midY ?? 0
+
+    for (originalIndex, word) in sortedByY {
+        if abs(word.frame.midY - currentLineY) > lineThreshold {
+            currentLineId += 1
+            currentLineY = word.frame.midY
+        }
+        lineAssignments[originalIndex] = currentLineId
+    }
+
+    // Assign sequential wordNum within each line (sorted by X for RTL ordering)
+    var lineWords: [Int: [(index: Int, frame: CGRect)]] = [:]
+    for (i, lineId) in lineAssignments.enumerated() {
+        lineWords[lineId, default: []].append((i, convertedWords[i].frame))
+    }
+
+    var wordNums = [Int](repeating: 0, count: convertedWords.count)
+    for (_, indices) in lineWords {
+        // Sort by X position within the line
+        let sorted = indices.sorted { $0.frame.minX < $1.frame.minX }
+        for (wordNum, entry) in sorted.enumerated() {
+            wordNums[entry.index] = wordNum + 1
+        }
+    }
+
+    // Build OCRBox array
+    var boxes: [OCRBox] = []
+    for (i, word) in convertedWords.enumerated() {
+        boxes.append(OCRBox(
+            text: word.text,
+            frame: word.frame,
+            lineId: lineAssignments[i],
+            wordNum: wordNums[i]
+        ))
+    }
+
+    // Detect margin column
+    let pageWidth = mediaBox.width
+    detectMarginColumn(&boxes, imageWidth: pageWidth)
+
+    print("📄 Extracted \(boxes.count) native text boxes from PDF page")
+    return boxes
 }

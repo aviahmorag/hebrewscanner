@@ -431,7 +431,27 @@ struct ContentView: View {
         // resizeWindowToFitImage(pageImage)
         
         print("📄 Loading PDF page \(pageIndex + 1) of \(totalPages)")
-        
+
+        // Check for native text layer (born-digital PDF) before running OCR
+        if var pdfBoxes = extractBoxesFromPDFPage(pdfPage) {
+            // Scale from PDF points to the coordinate space the overlay expects.
+            // The overlay applies scaleFactor=0.5 (Retina 2x), so we pre-multiply
+            // by 2.0 to cancel that out, then by zoomLevel for display size.
+            let nativeScale = zoomLevel * 2.0
+            for i in pdfBoxes.indices {
+                let f = pdfBoxes[i].frame
+                pdfBoxes[i].frame = CGRect(x: f.minX * nativeScale, y: f.minY * nativeScale,
+                                            width: f.width * nativeScale, height: f.height * nativeScale)
+            }
+            self.ocrBoxes = pdfBoxes
+            self.pageStructure = analyzePageStructure(boxes: pdfBoxes)
+            self.ocrText = pdfPage.string ?? ""
+            self.lastOCRCompletionTime = Date()
+            isLoading = false
+            print("✅ Used native PDF text (\(pdfBoxes.count) boxes), skipped OCR")
+            return
+        }
+
         // Run OCR in background without blocking navigation
         isLoading = true
         ocrTask = Task {
@@ -717,7 +737,7 @@ struct ContentView: View {
         Task {
             do {
                 let pages = try await generateDocumentPages()
-                let title = imageURL?.deletingPathExtension().lastPathComponent ?? String(localized: "מסמך")
+                let title = exportTitle()
                 let ext = saveURL.pathExtension.lowercased()
 
                 if ext == "html" || ext == "htm" {
@@ -795,58 +815,49 @@ struct ContentView: View {
         if let pdfDoc = pdfDocument {
             let pageCount = pdfDoc.pageCount
 
-            // Phase 1: Pre-render all page images at 2.0x and create temp files (serial, main actor)
+            // Phase 1: Check native text + pre-render images for OCR-needed pages
             var pageInputs: [(index: Int, tempURL: URL, imageSize: CGSize)] = []
-            for pageIndex in 0..<pageCount {
-                exportProgress = Double(pageIndex) / Double(pageCount) * 0.1  // 0-10% for pre-render
-                guard let pdfPage = pdfDoc.page(at: pageIndex) else { continue }
-                let pageImage = pdfPageToImage(pdfPage, zoomLevel: ocrMinZoom)
-                let tempURL = createTempImageFile(from: pageImage)
-                pageInputs.append((pageIndex, tempURL, pageImage.size))
-            }
-            exportProgress = 0.1
-
-            // Phase 2: OCR + LM processing (concurrent, up to 4 pages at a time)
-            struct PageOCRResult: Sendable {
-                let index: Int
-                let boxes: [OCRBox]
-                let structure: PageStructure?
-            }
             var ocrResults = [(boxes: [OCRBox], structure: PageStructure?)](
                 repeating: ([], nil), count: pageCount
             )
-            let maxConcurrent = 4
-            var completedCount = 0
+            var nativeTextPages = 0
 
-            await withTaskGroup(of: PageOCRResult.self) { group in
-                var nextIndex = 0
+            for pageIndex in 0..<pageCount {
+                exportProgress = Double(pageIndex) / Double(pageCount) * 0.1
+                guard let pdfPage = pdfDoc.page(at: pageIndex) else { continue }
 
-                // Launch initial batch
-                for _ in 0..<min(maxConcurrent, pageInputs.count) {
-                    let input = pageInputs[nextIndex]
-                    nextIndex += 1
-                    group.addTask {
-                        do {
-                            let (_, tsv) = try await runTesseractOCR(imageURL: input.tempURL)
-                            var boxes = parseTesseractTSV(tsv, imageSize: input.imageSize)
-                            boxes = await LanguageModelPostProcessor.process(boxes: boxes)
-                            let structure = analyzePageStructure(boxes: boxes)
-                            return PageOCRResult(index: input.index, boxes: boxes, structure: structure)
-                        } catch {
-                            print("⚠️ OCR failed for page \(input.index + 1): \(error)")
-                            return PageOCRResult(index: input.index, boxes: [], structure: nil)
-                        }
-                    }
+                // Try native text first (born-digital PDF)
+                if let nativeBoxes = extractBoxesFromPDFPage(pdfPage) {
+                    let structure = analyzePageStructure(boxes: nativeBoxes)
+                    ocrResults[pageIndex] = (nativeBoxes, structure)
+                    nativeTextPages += 1
+                    print("📄 Page \(pageIndex + 1): native text (\(nativeBoxes.count) boxes)")
+                } else {
+                    let pageImage = pdfPageToImage(pdfPage, zoomLevel: ocrMinZoom)
+                    let tempURL = createTempImageFile(from: pageImage)
+                    pageInputs.append((pageIndex, tempURL, pageImage.size))
                 }
+            }
+            exportProgress = 0.1
 
-                // Process completions and launch next pages
-                for await result in group {
-                    ocrResults[result.index] = (result.boxes, result.structure)
-                    completedCount += 1
-                    exportProgress = 0.1 + Double(completedCount) / Double(pageCount) * 0.85  // 10-95%
-                    print("📄 Exported page \(result.index + 1)/\(pageCount)")
+            if nativeTextPages > 0 {
+                print("📄 \(nativeTextPages)/\(pageCount) pages used native text, \(pageInputs.count) need OCR")
+            }
 
-                    if nextIndex < pageInputs.count {
+            // Phase 2: OCR + LM processing for pages without native text
+            if !pageInputs.isEmpty {
+                struct PageOCRResult: Sendable {
+                    let index: Int
+                    let boxes: [OCRBox]
+                    let structure: PageStructure?
+                }
+                let maxConcurrent = 4
+                var completedCount = 0
+
+                await withTaskGroup(of: PageOCRResult.self) { group in
+                    var nextIndex = 0
+
+                    for _ in 0..<min(maxConcurrent, pageInputs.count) {
                         let input = pageInputs[nextIndex]
                         nextIndex += 1
                         group.addTask {
@@ -859,6 +870,30 @@ struct ContentView: View {
                             } catch {
                                 print("⚠️ OCR failed for page \(input.index + 1): \(error)")
                                 return PageOCRResult(index: input.index, boxes: [], structure: nil)
+                            }
+                        }
+                    }
+
+                    for await result in group {
+                        ocrResults[result.index] = (result.boxes, result.structure)
+                        completedCount += 1
+                        exportProgress = 0.1 + Double(completedCount) / Double(pageInputs.count) * 0.85
+                        print("📄 Exported page \(result.index + 1)/\(pageCount)")
+
+                        if nextIndex < pageInputs.count {
+                            let input = pageInputs[nextIndex]
+                            nextIndex += 1
+                            group.addTask {
+                                do {
+                                    let (_, tsv) = try await runTesseractOCR(imageURL: input.tempURL)
+                                    var boxes = parseTesseractTSV(tsv, imageSize: input.imageSize)
+                                    boxes = await LanguageModelPostProcessor.process(boxes: boxes)
+                                    let structure = analyzePageStructure(boxes: boxes)
+                                    return PageOCRResult(index: input.index, boxes: boxes, structure: structure)
+                                } catch {
+                                    print("⚠️ OCR failed for page \(input.index + 1): \(error)")
+                                    return PageOCRResult(index: input.index, boxes: [], structure: nil)
+                                }
                             }
                         }
                     }
@@ -892,6 +927,20 @@ struct ContentView: View {
         exportProgress = 1.0
 
         return stripRepeatingParagraphs(pages)
+    }
+
+    private func exportTitle() -> String {
+        let words = ocrText
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .prefix(3)
+        if words.isEmpty {
+            return "Document"
+        }
+        // Sanitize for filename (remove characters illegal in filenames)
+        let joined = words.joined(separator: " ")
+        let sanitized = joined.replacingOccurrences(of: "[/\\\\:*?\"<>|]", with: "", options: .regularExpression)
+        return sanitized.isEmpty ? String(localized: "מסמך") : sanitized
     }
 
     private func extractTextFromBoxes(_ boxes: [OCRBox], structure: PageStructure? = nil) -> (main: String, margin: String) {
