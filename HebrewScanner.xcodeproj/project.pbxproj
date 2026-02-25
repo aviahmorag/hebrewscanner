@@ -41,33 +41,9 @@
 		21IOS0022F3C0002000AYIN2 /* TesseractIOS.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = TesseractIOS.xcframework; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		21IOS00E2F3C000E000AYINE /* Exceptions for "HebrewScanner" folder in "Ayin iOS" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Assets.xcassets,
-				ContentView.swift,
-				Credits.rtf,
-				HebrewScannerApp.swift,
-				SelectableOverlayImageView.swift,
-			);
-			target = 21IOS0092F3C0009000AYIN9 /* Ayin iOS */;
-		};
-		21IOS00F2F3C000F000AYINF /* Exceptions for "AyiniOS" folder in "Ayin iOS" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Info.plist,
-			);
-			target = 21IOS0092F3C0009000AYIN9 /* Ayin iOS */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
-
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		21F72F3F2E36F02300B409E5 /* HebrewScanner */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				21IOS00E2F3C000E000AYINE /* Exceptions for "HebrewScanner" folder in "Ayin iOS" target */,
-			);
 			path = HebrewScanner;
 			sourceTree = "<group>";
 		};
@@ -83,9 +59,6 @@
 		};
 		21IOS0032F3C0003000AYIN3 /* AyiniOS */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				21IOS00F2F3C000F000AYINF /* Exceptions for "AyiniOS" folder in "Ayin iOS" target */,
-			);
 			path = AyiniOS;
 			sourceTree = "<group>";
 		};
@@ -257,7 +230,6 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				21F72F3F2E36F02300B409E5 /* HebrewScanner */,
 				21IOS0032F3C0003000AYIN3 /* AyiniOS */,
 				21SHARED02F3B0001000SHARE /* Shared */,
 			);
@@ -754,8 +726,11 @@
 				ENABLE_PREVIEWS = YES;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = AyiniOS/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Ayin;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Ayin needs camera access to photograph documents for Hebrew text scanning";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Ayin needs access to the photo library to select images for Hebrew text scanning";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -798,8 +773,11 @@
 				ENABLE_PREVIEWS = YES;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = AyiniOS/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Ayin;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Ayin needs camera access to photograph documents for Hebrew text scanning";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Ayin needs access to the photo library to select images for Hebrew text scanning";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
