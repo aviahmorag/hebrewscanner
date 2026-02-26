@@ -7,6 +7,66 @@
 
 import Foundation
 
+/// Preprocess an image for better OCR on screen-photographed documents.
+/// Converts to grayscale, downscales to destroy moiré, and applies a median
+/// filter to clean residual noise. Saves debug images to tmp/ for inspection.
+private nonisolated func preprocessImage(_ pix: OpaquePointer) -> OpaquePointer {
+    let w = pixGetWidth(pix)
+    let h = pixGetHeight(pix)
+    let depth = pixGetDepth(pix)
+    print("🔧 preprocessImage: input \(w)×\(h) depth=\(depth)")
+
+    let debugDir = NSTemporaryDirectory()
+
+    // Step 1: Convert to grayscale
+    var gray: OpaquePointer
+    if depth > 8 {
+        guard let converted = pixConvertRGBToGray(pix, 0, 0, 0) else {
+            print("⚠️ preprocessImage: grayscale conversion failed, using original")
+            return pix
+        }
+        gray = converted
+        pixWrite("\(debugDir)debug_1_gray.png", gray, 3) // IFF_PNG = 3
+        print("🔧 preprocessImage: converted to grayscale → \(debugDir)debug_1_gray.png")
+    } else {
+        gray = pix
+        print("🔧 preprocessImage: already grayscale, skipping conversion")
+    }
+
+    // Step 2: Downscale large images. Anti-aliased downsampling low-pass filters
+    // the image, which reduces moiré from screen pixel grid interference.
+    let ownGray = (gray != pix)
+    var current: OpaquePointer = gray
+    var ownCurrent = ownGray
+    if w > 1500 {
+        let scale = Float(1500) / Float(w)
+        if let scaled = pixScaleSmooth(gray, scale, scale) {
+            if ownGray { var g: OpaquePointer? = gray; pixDestroy(&g) }
+            current = scaled
+            ownCurrent = true
+            let sw = pixGetWidth(scaled)
+            let sh = pixGetHeight(scaled)
+            pixWrite("\(debugDir)debug_2_scaled.png", scaled, 3)
+            print("🔧 preprocessImage: downscaled to \(sw)×\(sh) (scale=\(String(format: "%.2f", scale))) → \(debugDir)debug_2_scaled.png")
+        } else {
+            print("⚠️ preprocessImage: downscale failed, continuing at original size")
+        }
+    } else {
+        print("🔧 preprocessImage: width \(w) ≤ 1500, skipping downscale")
+    }
+
+    // Step 3: Median filter to remove residual moiré and noise
+    guard let filtered = pixMedianFilter(current, 5, 5) else {
+        print("⚠️ preprocessImage: median filter failed, using current image")
+        return current
+    }
+    if ownCurrent { var p: OpaquePointer? = current; pixDestroy(&p) }
+    pixWrite("\(debugDir)debug_3_median.png", filtered, 3)
+    print("🔧 preprocessImage: applied 5×5 median filter → \(debugDir)debug_3_median.png ✓")
+
+    return filtered
+}
+
 func runTesseractOCR(imageURL: URL) async throws -> (text: String, tsv: String) {
     let fm = FileManager.default
     let tessdataPath: String
@@ -52,13 +112,22 @@ func runTesseractOCR(imageURL: URL) async throws -> (text: String, tsv: String) 
         TessBaseAPISetPageSegMode(api, PSM_SINGLE_BLOCK)
 
         // Load image via Leptonica
-        var pix: OpaquePointer? = pixRead(imagePath)
-        guard pix != nil else {
+        let rawPix: OpaquePointer? = pixRead(imagePath)
+        guard let rawPixNN = rawPix else {
             throw NSError(domain: "OCR", code: 3, userInfo: [
                 NSLocalizedDescriptionKey: String(localized: "לא ניתן לקרוא את התמונה")
             ])
         }
+
+        // Preprocess for screen-photographed documents
+        let processed = preprocessImage(rawPixNN)
+        var pix: OpaquePointer? = processed
         defer { pixDestroy(&pix) }
+        // Free the raw image if preprocessing produced a new one
+        if processed != rawPixNN {
+            var raw: OpaquePointer? = rawPixNN
+            pixDestroy(&raw)
+        }
 
         // Set image and recognize
         TessBaseAPISetImage2(api, pix)

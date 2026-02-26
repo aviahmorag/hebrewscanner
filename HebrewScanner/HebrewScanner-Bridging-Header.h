@@ -46,5 +46,14 @@ void         TessDeleteText(const char *text);
 // Leptonica API
 Pix         *pixRead(const char *filename);
 void         pixDestroy(Pix **ppix);
+int          pixGetDepth(const Pix *pix);
+Pix         *pixConvertRGBToGray(Pix *pixs, float rwt, float gwt, float bwt);
+Pix         *pixCleanBackgroundToWhite(Pix *pixs, Pix *pixim, Pix *pixg, float gamma, int blackval, int whiteval);
+Pix         *pixMedianFilter(Pix *pixs, int wf, int hf);
+int          pixGetWidth(const Pix *pix);
+int          pixGetHeight(const Pix *pix);
+Pix         *pixScaleSmooth(Pix *pix, float scalex, float scaley);
+int          pixWrite(const char *filename, Pix *pix, int format);
+int          pixOtsuAdaptiveThreshold(Pix *pixs, int sx, int sy, int smoothx, int smoothy, float scorefract, Pix **ppixth, Pix **ppixd);
 
 #endif

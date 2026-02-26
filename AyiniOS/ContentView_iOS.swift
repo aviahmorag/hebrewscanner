@@ -53,6 +53,11 @@ struct ContentView_iOS: View {
     // About
     @State private var showAbout = false
 
+    // Debug
+    #if DEBUG
+    @State private var showDebugImages = false
+    #endif
+
     private let ocrMinZoom: CGFloat = 2.0  // Minimum zoom for OCR (~288 DPI on Retina)
 
     var body: some View {
@@ -93,10 +98,20 @@ struct ContentView_iOS: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        showAbout = true
-                    } label: {
-                        Image(systemName: "info.circle")
+                    HStack {
+                        Button {
+                            showAbout = true
+                        } label: {
+                            Image(systemName: "info.circle")
+                        }
+                        #if DEBUG
+                        Button {
+                            showDebugImages = true
+                        } label: {
+                            Image(systemName: "eye.trianglebadge.exclamationmark")
+                        }
+                        .disabled(image == nil)
+                        #endif
                     }
                 }
 
@@ -198,6 +213,12 @@ struct ContentView_iOS: View {
                 AboutSheet()
                     .presentationDetents([.medium, .large])
             }
+            #if DEBUG
+            .sheet(isPresented: $showDebugImages) {
+                DebugPreprocessSheet()
+                    .presentationDetents([.large])
+            }
+            #endif
         }
     }
 
@@ -448,7 +469,15 @@ struct ContentView_iOS: View {
     private func createTempImageFile(from image: UIImage) -> URL {
         let tempDir = FileManager.default.temporaryDirectory
         let tempURL = tempDir.appendingPathComponent(UUID().uuidString).appendingPathExtension("png")
-        if let pngData = image.pngData() {
+        // Redraw to apply camera orientation so Leptonica reads correctly-oriented pixels
+        let normalized: UIImage
+        if image.imageOrientation == .up {
+            normalized = image
+        } else {
+            let renderer = UIGraphicsImageRenderer(size: image.size)
+            normalized = renderer.image { _ in image.draw(at: .zero) }
+        }
+        if let pngData = normalized.pngData() {
             try? pngData.write(to: tempURL)
         }
         return tempURL
@@ -894,6 +923,65 @@ struct AboutSheet: View {
         }
     }
 }
+
+// MARK: - Debug Preprocess Sheet
+
+#if DEBUG
+struct DebugPreprocessSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedStep = "debug_3_median"
+
+    private let steps = [
+        ("debug_1_gray", "1. Grayscale"),
+        ("debug_2_scaled", "2. Downscaled"),
+        ("debug_3_median", "3. Median Filter"),
+    ]
+
+    private func loadImage(_ name: String) -> UIImage? {
+        let path = NSTemporaryDirectory() + name + ".png"
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else { return nil }
+        return UIImage(data: data)
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                Picker("Step", selection: $selectedStep) {
+                    ForEach(steps, id: \.0) { step in
+                        Text(step.1).tag(step.0)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .padding()
+
+                if let img = loadImage(selectedStep) {
+                    Image(uiImage: img)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .padding(4)
+                    Text("\(Int(img.size.width))×\(Int(img.size.height))")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .padding(.bottom, 4)
+                } else {
+                    Spacer()
+                    Text("No image for this step")
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+            }
+            .navigationTitle("Preprocessing Debug")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Close") { dismiss() }
+                }
+            }
+        }
+    }
+}
+#endif
 
 // MARK: - Share Sheet
 
