@@ -284,15 +284,16 @@ struct ContentView: View {
                 return
             }
 
-            let (text, tsv) = try await runTesseractOCR(imageURL: ocrURL)
+            let (text, tsv, preprocessScale) = try await runTesseractOCR(imageURL: ocrURL)
             self.ocrText = text
             var boxes = parseTesseractTSV(tsv, imageSize: ocrImageSize)
-            // Scale box coordinates from OCR space to display space
-            if coordScale != 1.0 {
+            // Scale box coordinates from preprocessed/OCR space to display space
+            let totalScale = coordScale * CGFloat(1.0 / preprocessScale)
+            if totalScale != 1.0 {
                 for i in boxes.indices {
                     let f = boxes[i].frame
-                    boxes[i].frame = CGRect(x: f.minX * coordScale, y: f.minY * coordScale,
-                                            width: f.width * coordScale, height: f.height * coordScale)
+                    boxes[i].frame = CGRect(x: f.minX * totalScale, y: f.minY * totalScale,
+                                            width: f.width * totalScale, height: f.height * totalScale)
                 }
             }
             boxes = await LanguageModelPostProcessor.process(boxes: boxes)
@@ -377,13 +378,21 @@ struct ContentView: View {
             do {
                 try Task.checkCancellation()
                 
-                let (text, tsv) = try await runTesseractOCR(imageURL: url)
-                
+                let (text, tsv, preprocScale) = try await runTesseractOCR(imageURL: url)
+
                 try Task.checkCancellation()
-                
+
                 if !Task.isCancelled {
                     self.ocrText = text
                     var boxes = parseTesseractTSV(tsv, imageSize: nsImage.size)
+                    let preprocCoordScale = CGFloat(1.0 / preprocScale)
+                    if preprocCoordScale != 1.0 {
+                        for i in boxes.indices {
+                            let f = boxes[i].frame
+                            boxes[i].frame = CGRect(x: f.minX * preprocCoordScale, y: f.minY * preprocCoordScale,
+                                                    width: f.width * preprocCoordScale, height: f.height * preprocCoordScale)
+                        }
+                    }
                     boxes = await LanguageModelPostProcessor.process(boxes: boxes)
                     self.ocrBoxes = boxes
                     self.pageStructure = analyzePageStructure(boxes: self.ocrBoxes)
@@ -474,7 +483,7 @@ struct ContentView: View {
                 // Check if cancelled before OCR
                 try Task.checkCancellation()
 
-                let (text, tsv) = try await runTesseractOCR(imageURL: tempURL)
+                let (text, tsv, preprocScale) = try await runTesseractOCR(imageURL: tempURL)
 
                 // Check if cancelled before updating UI
                 try Task.checkCancellation()
@@ -483,8 +492,8 @@ struct ContentView: View {
                 if self.currentPageIndex == pageIndex && !Task.isCancelled {
                     self.ocrText = text
                     var boxes = parseTesseractTSV(tsv, imageSize: ocrImage.size)
-                    // Scale box coordinates from OCR space to display space
-                    let coordScale = self.zoomLevel / ocrZoom
+                    // Scale box coordinates from preprocessed/OCR space to display space
+                    let coordScale = self.zoomLevel / (ocrZoom * CGFloat(preprocScale))
                     if coordScale != 1.0 {
                         for i in boxes.indices {
                             let f = boxes[i].frame
@@ -862,7 +871,7 @@ struct ContentView: View {
                         nextIndex += 1
                         group.addTask {
                             do {
-                                let (_, tsv) = try await runTesseractOCR(imageURL: input.tempURL)
+                                let (_, tsv, _) = try await runTesseractOCR(imageURL: input.tempURL)
                                 var boxes = parseTesseractTSV(tsv, imageSize: input.imageSize)
                                 boxes = await LanguageModelPostProcessor.process(boxes: boxes)
                                 let structure = analyzePageStructure(boxes: boxes)
@@ -885,7 +894,7 @@ struct ContentView: View {
                             nextIndex += 1
                             group.addTask {
                                 do {
-                                    let (_, tsv) = try await runTesseractOCR(imageURL: input.tempURL)
+                                    let (_, tsv, _) = try await runTesseractOCR(imageURL: input.tempURL)
                                     var boxes = parseTesseractTSV(tsv, imageSize: input.imageSize)
                                     boxes = await LanguageModelPostProcessor.process(boxes: boxes)
                                     let structure = analyzePageStructure(boxes: boxes)
@@ -914,7 +923,7 @@ struct ContentView: View {
             exportProgress = 0.5
 
             let tempURL = createTempImageFile(from: currentImage)
-            let (_, tsv) = try await runTesseractOCR(imageURL: tempURL)
+            let (_, tsv, _) = try await runTesseractOCR(imageURL: tempURL)
             var boxes = parseTesseractTSV(tsv, imageSize: currentImage.size)
             boxes = await LanguageModelPostProcessor.process(boxes: boxes)
             let structure = analyzePageStructure(boxes: boxes)

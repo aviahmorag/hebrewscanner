@@ -302,12 +302,21 @@ struct ContentView_iOS: View {
                 self.imageURL = tempURL
 
                 try Task.checkCancellation()
-                let (text, tsv) = try await runTesseractOCR(imageURL: tempURL)
+                let (text, tsv, preprocessScale) = try await runTesseractOCR(imageURL: tempURL)
 
                 try Task.checkCancellation()
                 if !Task.isCancelled {
                     self.ocrText = text
                     var boxes = parseTesseractTSV(tsv, imageSize: uiImage.size)
+                    // Scale coordinates from preprocessed image space back to original
+                    let coordScale = CGFloat(1.0 / preprocessScale)
+                    if coordScale != 1.0 {
+                        for i in boxes.indices {
+                            let f = boxes[i].frame
+                            boxes[i].frame = CGRect(x: f.minX * coordScale, y: f.minY * coordScale,
+                                                    width: f.width * coordScale, height: f.height * coordScale)
+                        }
+                    }
                     boxes = await LanguageModelPostProcessor.process(boxes: boxes)
                     self.ocrBoxes = boxes
                     self.pageStructure = analyzePageStructure(boxes: self.ocrBoxes)
@@ -394,13 +403,14 @@ struct ContentView_iOS: View {
                 let tempURL = createTempImageFile(from: ocrImage)
 
                 try Task.checkCancellation()
-                let (text, tsv) = try await runTesseractOCR(imageURL: tempURL)
+                let (text, tsv, preprocessScale) = try await runTesseractOCR(imageURL: tempURL)
 
                 try Task.checkCancellation()
                 if self.currentPageIndex == pageIndex && !Task.isCancelled {
                     self.ocrText = text
                     var boxes = parseTesseractTSV(tsv, imageSize: ocrImage.size)
-                    let coordScale = 1.0 / ocrZoom
+                    // Combine PDF zoom scale with preprocessing scale
+                    let coordScale = 1.0 / (ocrZoom * CGFloat(preprocessScale))
                     if coordScale != 1.0 {
                         for i in boxes.indices {
                             let f = boxes[i].frame
@@ -604,7 +614,7 @@ struct ContentView_iOS: View {
                 let ocrImage = pdfPageToImage(pdfPage, zoomLevel: ocrMinZoom)
                 let tempURL = createTempImageFile(from: ocrImage)
 
-                let (_, tsv) = try await runTesseractOCR(imageURL: tempURL)
+                let (_, tsv, _) = try await runTesseractOCR(imageURL: tempURL)
                 var boxes = parseTesseractTSV(tsv, imageSize: ocrImage.size)
                 boxes = await LanguageModelPostProcessor.process(boxes: boxes)
                 let structure = analyzePageStructure(boxes: boxes)
@@ -617,7 +627,7 @@ struct ContentView_iOS: View {
             exportProgress = 0.5
 
             let tempURL = createTempImageFile(from: currentImage)
-            let (_, tsv) = try await runTesseractOCR(imageURL: tempURL)
+            let (_, tsv, _) = try await runTesseractOCR(imageURL: tempURL)
             var boxes = parseTesseractTSV(tsv, imageSize: currentImage.size)
             boxes = await LanguageModelPostProcessor.process(boxes: boxes)
             let structure = analyzePageStructure(boxes: boxes)
@@ -931,12 +941,13 @@ struct AboutSheet: View {
 #if DEBUG
 struct DebugPreprocessSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var selectedStep = "debug_3_median"
+    @State private var selectedStep = "debug_4_median"
 
     private let steps = [
-        ("debug_1_gray", "1. Grayscale"),
-        ("debug_2_scaled", "2. Downscaled"),
-        ("debug_3_median", "3. Median Filter"),
+        ("debug_1_gray", "1. Gray"),
+        ("debug_2_scaled", "2. Scale"),
+        ("debug_3_bgclean", "3. BG Clean"),
+        ("debug_4_median", "4. Median"),
     ]
 
     private func loadImage(_ name: String) -> UIImage? {

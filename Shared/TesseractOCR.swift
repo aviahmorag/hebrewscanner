@@ -10,7 +10,9 @@ import Foundation
 /// Preprocess an image for better OCR on screen-photographed documents.
 /// Converts to grayscale, downscales to destroy moiré, and applies a median
 /// filter to clean residual noise. Saves debug images to tmp/ for inspection.
-private nonisolated func preprocessImage(_ pix: OpaquePointer) -> OpaquePointer {
+/// Returns the processed Pix and the scale factor applied (original → processed).
+/// Callers must divide box coordinates by this scale to map back to original image space.
+private nonisolated func preprocessImage(_ pix: OpaquePointer) -> (pix: OpaquePointer, scale: Float) {
     let w = pixGetWidth(pix)
     let h = pixGetHeight(pix)
     let depth = pixGetDepth(pix)
@@ -23,7 +25,7 @@ private nonisolated func preprocessImage(_ pix: OpaquePointer) -> OpaquePointer 
     if depth > 8 {
         guard let converted = pixConvertRGBToGray(pix, 0, 0, 0) else {
             print("⚠️ preprocessImage: grayscale conversion failed, using original")
-            return pix
+            return (pix, 1.0)
         }
         gray = converted
         pixWrite("\(debugDir)debug_1_gray.png", gray, 3) // IFF_PNG = 3
@@ -38,9 +40,11 @@ private nonisolated func preprocessImage(_ pix: OpaquePointer) -> OpaquePointer 
     let ownGray = (gray != pix)
     var current: OpaquePointer = gray
     var ownCurrent = ownGray
+    var appliedScale: Float = 1.0
     if w > 1500 {
         let scale = Float(1500) / Float(w)
         if let scaled = pixScaleSmooth(gray, scale, scale) {
+            appliedScale = scale
             if ownGray { var g: OpaquePointer? = gray; pixDestroy(&g) }
             current = scaled
             ownCurrent = true
@@ -55,19 +59,32 @@ private nonisolated func preprocessImage(_ pix: OpaquePointer) -> OpaquePointer 
         print("🔧 preprocessImage: width \(w) ≤ 1500, skipping downscale")
     }
 
-    // Step 3: Median filter to remove residual moiré and noise
-    guard let filtered = pixMedianFilter(current, 5, 5) else {
-        print("⚠️ preprocessImage: median filter failed, using current image")
-        return current
+    // Step 3: Normalize background to white. Handles colored backgrounds
+    // (yellow signs → grey in grayscale) and uneven lighting / glare.
+    guard let clean = pixCleanBackgroundToWhite(current, nil, nil, 1.0, 70, 190) else {
+        print("⚠️ preprocessImage: background cleanup failed, using current image")
+        return (current, appliedScale)
     }
     if ownCurrent { var p: OpaquePointer? = current; pixDestroy(&p) }
-    pixWrite("\(debugDir)debug_3_median.png", filtered, 3)
-    print("🔧 preprocessImage: applied 5×5 median filter → \(debugDir)debug_3_median.png ✓")
+    pixWrite("\(debugDir)debug_3_bgclean.png", clean, 3)
+    print("🔧 preprocessImage: normalized background → \(debugDir)debug_3_bgclean.png")
 
-    return filtered
+    // Step 4: Median filter to remove residual noise
+    guard let filtered = pixMedianFilter(clean, 3, 3) else {
+        print("⚠️ preprocessImage: median filter failed, using cleaned image")
+        return (clean, appliedScale)
+    }
+    var cl: OpaquePointer? = clean; pixDestroy(&cl)
+    pixWrite("\(debugDir)debug_4_median.png", filtered, 3)
+    print("🔧 preprocessImage: applied 3×3 median filter → \(debugDir)debug_4_median.png ✓")
+
+    return (filtered, appliedScale)
 }
 
-func runTesseractOCR(imageURL: URL) async throws -> (text: String, tsv: String) {
+/// Returns recognized text, TSV output, and the preprocessing scale factor.
+/// Box coordinates in the TSV are in the preprocessed image's coordinate space;
+/// divide by `preprocessScale` to map them back to the original image.
+func runTesseractOCR(imageURL: URL) async throws -> (text: String, tsv: String, preprocessScale: Float) {
     let fm = FileManager.default
     let tessdataPath: String
     if let resourceURL = Bundle.main.resourceURL {
@@ -90,7 +107,7 @@ func runTesseractOCR(imageURL: URL) async throws -> (text: String, tsv: String) 
     print("📥 OCR input image: \(imagePath)")
     print("📚 tessdata folder: \(tessdataPath)")
 
-    let tsvString: String = try await Task.detached {
+    let (tsvString, preprocScale): (String, Float) = try await Task.detached {
         // Create API handle
         guard let api = TessBaseAPICreate() else {
             throw NSError(domain: "OCR", code: 1, userInfo: [
@@ -120,7 +137,7 @@ func runTesseractOCR(imageURL: URL) async throws -> (text: String, tsv: String) 
         }
 
         // Preprocess for screen-photographed documents
-        let processed = preprocessImage(rawPixNN)
+        let (processed, scale) = preprocessImage(rawPixNN)
         var pix: OpaquePointer? = processed
         defer { pixDestroy(&pix) }
         // Free the raw image if preprocessing produced a new one
@@ -148,7 +165,7 @@ func runTesseractOCR(imageURL: URL) async throws -> (text: String, tsv: String) 
         defer { TessDeleteText(tsvPtr) }
 
         let tsv = String(cString: tsvPtr)
-        return tsv
+        return (tsv, scale)
     }.value
 
     if tsvString.isEmpty {
@@ -173,5 +190,5 @@ func runTesseractOCR(imageURL: URL) async throws -> (text: String, tsv: String) 
         }
         .joined(separator: " ")
 
-    return (recognizedText, tsvString)
+    return (recognizedText, tsvString, preprocScale)
 }
