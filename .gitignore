@@ -30,5 +30,6 @@ ios-build/
 *.mlpackage
 *.mlmodelc
 
-# Claude settings
+# Claude
 .claude/settings.local.json
+CLAUDE.md
