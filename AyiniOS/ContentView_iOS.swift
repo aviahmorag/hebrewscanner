@@ -474,7 +474,9 @@ struct ContentView_iOS: View {
         if image.imageOrientation == .up {
             normalized = image
         } else {
-            let renderer = UIGraphicsImageRenderer(size: image.size)
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = 1.0  // native pixels, not 3x screen scale
+            let renderer = UIGraphicsImageRenderer(size: image.size, format: format)
             normalized = renderer.image { _ in image.draw(at: .zero) }
         }
         if let pngData = normalized.pngData() {
